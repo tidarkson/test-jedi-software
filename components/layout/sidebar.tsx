@@ -18,6 +18,7 @@ import {
   FileText,
   Home,
   Layers,
+  ClipboardList,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -52,6 +53,8 @@ const navigation: NavGroup[] = [
     items: [
       { title: 'Test Repository', href: '/', icon: FolderTree },
       { title: 'Test Runs', href: '/test-runs', icon: PlayCircle, badge: 3 },
+      { title: 'Test Plans', href: '/test-plans', icon: ClipboardList },
+      { title: 'Execute', href: '/execute', icon: TestTube2 },
       { title: 'Defects', href: '/defects', icon: Bug, badge: 12 },
     ],
   },

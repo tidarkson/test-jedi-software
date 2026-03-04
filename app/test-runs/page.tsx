@@ -161,10 +161,10 @@ export default function TestRunsPage() {
                   return (
                     <TableRow key={run.id} className="cursor-pointer hover:bg-muted/50">
                       <TableCell>
-                        <div>
-                          <p className="font-medium">{run.name}</p>
+                        <Link href={`/test-runs/${run.id}`} className="block">
+                          <p className="font-medium hover:underline">{run.name}</p>
                           <p className="text-xs text-muted-foreground">{run.id}</p>
-                        </div>
+                        </Link>
                       </TableCell>
                       <TableCell>
                         <Badge

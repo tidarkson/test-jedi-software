@@ -1,1 +1,8 @@
 export { TestRunWizard } from './test-run-wizard'
+export { RunDashboard } from './run-dashboard'
+export { RunHeader } from './run-header'
+export { ProgressOverview } from './progress-overview'
+export { StatusDistributionBar } from './status-distribution-bar'
+export { TesterPerformanceTable } from './tester-performance-table'
+export { FailureDistributionChart } from './failure-distribution-chart'
+export { RecentActivityFeed } from './recent-activity-feed'

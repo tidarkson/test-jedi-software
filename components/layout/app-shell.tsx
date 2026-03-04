@@ -15,20 +15,20 @@ export function AppShell({ children, sidebar, header, className }: AppShellProps
 
   return (
     <AppShellContext.Provider value={{ sidebarCollapsed, setSidebarCollapsed }}>
-      <div className={cn('flex h-screen w-screen overflow-hidden bg-background', className)}>
+      <div className={cn('flex h-screen w-screen bg-background', className)}>
         {sidebar && (
           <aside
             className={cn(
-              'h-full flex-shrink-0 border-r border-border bg-sidebar transition-all duration-normal ease-in-out overflow-hidden',
+              'h-screen flex-shrink-0 border-r border-border bg-sidebar transition-all duration-normal ease-in-out overflow-hidden',
               sidebarCollapsed ? 'w-16' : 'w-60'
             )}
           >
             {sidebar}
           </aside>
         )}
-        <div className="flex h-full flex-1 flex-col overflow-hidden">
+        <div className="flex h-screen flex-1 flex-col">
           {header}
-          <main className="relative flex-1 overflow-hidden">{children}</main>
+          <main className="relative flex-1 overflow-y-auto">{children}</main>
         </div>
       </div>
     </AppShellContext.Provider>
