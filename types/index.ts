@@ -312,3 +312,159 @@ export interface RunDashboardData {
   createdAt: Date
   updatedAt: Date
 }
+
+// Analytics Types
+export type DateRange = 'last_7d' | 'last_30d' | 'last_90d' | 'custom'
+
+export interface DateRangeFilter {
+  range: DateRange
+  startDate?: Date
+  endDate?: Date
+}
+
+// Quality Trends Tab
+export interface PassFailTrend {
+  date: string
+  passed: number
+  failed: number
+  passRate: number
+}
+
+export interface FailureDistributionData {
+  suiteName: string
+  value: number
+  percentage: number
+}
+
+export interface AutomationCoverageTrend {
+  week: string
+  coverage: number
+  automated: number
+  manual: number
+}
+
+// Suite Health Tab
+export interface SuiteHealthHeatmap {
+  suiteName: string
+  suiteId: string
+  failuresByWeek: number[]
+  weekLabels: string[]
+}
+
+export interface SuiteHealthScore {
+  suiteId: string
+  suiteName: string
+  totalCases: number
+  lastRunDate: Date
+  passRate: number
+  flakyCount: number
+  healthScore: number // 0-100
+}
+
+// Defect Analytics Tab
+export interface DefectLeakageTrend {
+  week: string
+  leakageRate: number
+  defectsLeaked: number
+}
+
+export interface DefectStatus {
+  week: string
+  open: number
+  closed: number
+}
+
+export interface MTTRMetrics {
+  current: number // hours
+  average: number // hours
+  trend: 'up' | 'down' | 'stable'
+}
+
+// Team Performance Tab
+export interface WorkloadHeatmap {
+  testerName: string
+  testerId: string
+  executionByDay: number[]
+  dayLabels: string[]
+}
+
+export interface TesterLeaderboardEntry {
+  testerId: string
+  testerName: string
+  completed: number
+  passRate: number
+  avgTimePerCase: number
+  rank: number
+}
+
+export interface ExecutionVelocity {
+  date: string
+  executedCases: number
+  velocity: number // cases per day
+}
+
+// Re-export integration types
+export type {
+  IntegrationType,
+  IntegrationStatus,
+  BaseIntegration,
+  JiraConfiguration,
+  JiraIntegration,
+  JiraProject,
+  GitHubConfiguration,
+  GitHubIntegration,
+  GitLabConfiguration,
+  GitLabIntegration,
+  SlackConfiguration,
+  SlackIntegration,
+  TeamsConfiguration,
+  TeamsIntegration,
+  AzureDevOpsConfiguration,
+  AzureDevOpsIntegration,
+  Integration,
+  Webhook,
+  WebhookEvent,
+  WebhookDelivery,
+  AutomationImportRecord,
+  ImportedCase,
+  IntegrationDialogState,
+} from './integrations'
+
+// Export Modal
+export type ExportFormat = 'pdf' | 'xlsx'
+
+export interface ExportSection {
+  id: string
+  title: string
+  selected: boolean
+}
+
+export interface ExportOptions {
+  format: ExportFormat
+  sections: ExportSection[]
+  generateSummary: boolean
+  includeCharts: boolean
+}
+
+// Analytics Dashboard State
+export interface AnalyticsData {
+  qualityTrends: {
+    passFailTrends: PassFailTrend[]
+    failureDistribution: FailureDistributionData[]
+    automationCoverage: AutomationCoverageTrend[]
+  }
+  suiteHealth: {
+    heatmaps: SuiteHealthHeatmap[]
+    healthScores: SuiteHealthScore[]
+  }
+  defectAnalytics: {
+    leakageTrend: DefectLeakageTrend[]
+    defectStatus: DefectStatus[]
+    mttr: MTTRMetrics
+  }
+  teamPerformance: {
+    workloadHeatmaps: WorkloadHeatmap[]
+    leaderboard: TesterLeaderboardEntry[]
+    velocity: ExecutionVelocity[]
+  }
+}

@@ -51,7 +51,7 @@ const navigation: NavGroup[] = [
   {
     title: 'Test Management',
     items: [
-      { title: 'Test Repository', href: '/', icon: FolderTree },
+      { title: 'Test Repository', href: '/test-repository', icon: FolderTree },
       { title: 'Test Runs', href: '/test-runs', icon: PlayCircle, badge: 3 },
       { title: 'Test Plans', href: '/test-plans', icon: ClipboardList },
       { title: 'Execute', href: '/execute', icon: TestTube2 },

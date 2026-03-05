@@ -144,7 +144,7 @@ function DiffViewer({ before, after }: DiffViewerProps) {
   )
 }
 
-export function AuditLogTable({ entries }: AuditLogTableProps) {
+export function AuditLogTable({ entries = [] }: AuditLogTableProps) {
   const [selectedEntry, setSelectedEntry] = React.useState<AuditLogEntry | null>(null)
   const [filters, setFilters] = React.useState({
     user: '',
@@ -156,7 +156,7 @@ export function AuditLogTable({ entries }: AuditLogTableProps) {
   const [isFilterOpen, setIsFilterOpen] = React.useState(false)
 
   const filteredEntries = React.useMemo(() => {
-    return entries.filter((entry) => {
+    return (entries ?? []).filter((entry) => {
       if (filters.user && !entry.userName.toLowerCase().includes(filters.user.toLowerCase())) {
         return false
       }

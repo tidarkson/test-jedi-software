@@ -57,7 +57,7 @@ interface RetentionRulesManagerProps {
   onRulesChange: (rules: DataRetentionRule[]) => void
 }
 
-export function RetentionRulesManager({ rules, onRulesChange }: RetentionRulesManagerProps) {
+export function RetentionRulesManager({ rules = [], onRulesChange = () => {} }: RetentionRulesManagerProps) {
   const [isCreateOpen, setIsCreateOpen] = React.useState(false)
   const [deleteRuleId, setDeleteRuleId] = React.useState<string | null>(null)
   const [formData, setFormData] = React.useState({

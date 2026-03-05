@@ -5,9 +5,10 @@ import { AppShell } from '@/components/layout/app-shell'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
 import { AdminGuard, CustomFieldsManager, AuditLogTable, RetentionRulesManager } from '@/components/admin'
+import { IntegrationsSettings } from '@/components/integrations/integrations-settings'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Settings, List, History, Trash2 } from 'lucide-react'
+import { Settings, List, History, Trash2, Plug } from 'lucide-react'
 
 export default function SettingsPage() {
   const breadcrumbs = [
@@ -33,7 +34,7 @@ export default function SettingsPage() {
 
             {/* Tabs */}
             <Tabs defaultValue="custom-fields" className="space-y-4">
-              <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:grid-cols-none">
+              <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="custom-fields" className="gap-2">
                   <List className="h-4 w-4" />
                   <span className="hidden sm:inline">Custom Fields</span>
@@ -45,6 +46,10 @@ export default function SettingsPage() {
                 <TabsTrigger value="retention" className="gap-2">
                   <Trash2 className="h-4 w-4" />
                   <span className="hidden sm:inline">Data Retention</span>
+                </TabsTrigger>
+                <TabsTrigger value="integrations" className="gap-2">
+                  <Plug className="h-4 w-4" />
+                  <span className="hidden sm:inline">Integrations</span>
                 </TabsTrigger>
               </TabsList>
 
@@ -97,6 +102,10 @@ export default function SettingsPage() {
                     <RetentionRulesManager />
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="integrations">
+                <IntegrationsSettings />
               </TabsContent>
             </Tabs>
           </div>
