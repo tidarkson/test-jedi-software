@@ -19,6 +19,8 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
+import { ApiError } from '@/lib/api/errors'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -44,6 +46,17 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useTestRepositoryStore, type TestCaseItem, type TestStepItem } from '@/lib/store/test-repository-store'
 import type { TestStatus } from '@/types'
+
+interface CaseEditState {
+  title: string
+  description: string
+  status: TestStatus
+  priority: string
+  severity: string
+  type: string
+  automationStatus: string
+  estimatedTime: string
+}
 
 const priorityOptions = [
   { value: 'critical', label: 'Critical' },
@@ -72,6 +85,7 @@ const typeOptions = [
 const automationOptions = [
   { value: 'automated', label: 'Automated' },
   { value: 'manual', label: 'Manual' },
+  { value: 'partially-automated', label: 'Partially Automated' },
   { value: 'to-automate', label: 'To Automate' },
 ]
 
@@ -90,7 +104,14 @@ interface DetailsTabProps {
   isEditing: boolean
 }
 
-function DetailsTab({ testCase, isEditing }: DetailsTabProps) {
+interface DetailsTabControlledProps {
+  testCase: TestCaseItem
+  isEditing: boolean
+  editState: CaseEditState
+  onEditChange: (field: keyof CaseEditState, value: string) => void
+}
+
+function DetailsTab({ testCase, isEditing, editState, onEditChange }: DetailsTabControlledProps) {
   return (
     <div className="space-y-6 py-4">
       {/* Title and Description */}
@@ -98,7 +119,7 @@ function DetailsTab({ testCase, isEditing }: DetailsTabProps) {
         <div className="space-y-1.5">
           <Label htmlFor="title">Title</Label>
           {isEditing ? (
-            <Input id="title" defaultValue={testCase.title} />
+            <Input id="title" value={editState.title} onChange={(e) => onEditChange('title', e.target.value)} />
           ) : (
             <p className="text-sm">{testCase.title}</p>
           )}
@@ -108,7 +129,8 @@ function DetailsTab({ testCase, isEditing }: DetailsTabProps) {
           {isEditing ? (
             <Textarea
               id="description"
-              defaultValue={testCase.description}
+              value={editState.description}
+              onChange={(e) => onEditChange('description', e.target.value)}
               rows={3}
             />
           ) : (
@@ -126,7 +148,7 @@ function DetailsTab({ testCase, isEditing }: DetailsTabProps) {
         <div className="space-y-1.5">
           <Label>Status</Label>
           {isEditing ? (
-            <Select defaultValue={testCase.status}>
+            <Select value={editState.status} onValueChange={(v) => onEditChange('status', v)}>
               <SelectTrigger className="h-8">
                 <SelectValue />
               </SelectTrigger>
@@ -146,7 +168,7 @@ function DetailsTab({ testCase, isEditing }: DetailsTabProps) {
         <div className="space-y-1.5">
           <Label>Priority</Label>
           {isEditing ? (
-            <Select defaultValue={testCase.priority}>
+            <Select value={editState.priority} onValueChange={(v) => onEditChange('priority', v)}>
               <SelectTrigger className="h-8">
                 <SelectValue />
               </SelectTrigger>
@@ -168,7 +190,7 @@ function DetailsTab({ testCase, isEditing }: DetailsTabProps) {
         <div className="space-y-1.5">
           <Label>Severity</Label>
           {isEditing ? (
-            <Select defaultValue={testCase.severity}>
+            <Select value={editState.severity} onValueChange={(v) => onEditChange('severity', v)}>
               <SelectTrigger className="h-8">
                 <SelectValue />
               </SelectTrigger>
@@ -190,7 +212,7 @@ function DetailsTab({ testCase, isEditing }: DetailsTabProps) {
         <div className="space-y-1.5">
           <Label>Type</Label>
           {isEditing ? (
-            <Select defaultValue={testCase.type}>
+            <Select value={editState.type} onValueChange={(v) => onEditChange('type', v)}>
               <SelectTrigger className="h-8">
                 <SelectValue />
               </SelectTrigger>
@@ -212,7 +234,7 @@ function DetailsTab({ testCase, isEditing }: DetailsTabProps) {
         <div className="space-y-1.5">
           <Label>Automation</Label>
           {isEditing ? (
-            <Select defaultValue={testCase.automationStatus}>
+            <Select value={editState.automationStatus} onValueChange={(v) => onEditChange('automationStatus', v)}>
               <SelectTrigger className="h-8">
                 <SelectValue />
               </SelectTrigger>
@@ -228,6 +250,8 @@ function DetailsTab({ testCase, isEditing }: DetailsTabProps) {
             <Badge variant="outline" className="capitalize">
               {testCase.automationStatus === 'to-automate'
                 ? 'To Automate'
+                : testCase.automationStatus === 'partially-automated'
+                ? 'Partially Automated'
                 : testCase.automationStatus}
             </Badge>
           )}
@@ -238,7 +262,8 @@ function DetailsTab({ testCase, isEditing }: DetailsTabProps) {
           {isEditing ? (
             <Input
               type="number"
-              defaultValue={testCase.estimatedTime}
+              value={editState.estimatedTime}
+              onChange={(e) => onEditChange('estimatedTime', e.target.value)}
               className="h-8"
               placeholder="Minutes"
             />
@@ -448,16 +473,76 @@ function CommentsTab({ testCase }: CommentsTabProps) {
   )
 }
 
-export function CaseDetailDrawer() {
-  const { activeCaseId, setActiveCase, getCaseById } = useTestRepositoryStore()
+interface CaseDetailDrawerProps {
+  projectId: string
+}
+
+export function CaseDetailDrawer({ projectId }: CaseDetailDrawerProps) {
+  const { activeCaseId, setActiveCase, getCaseById, updateCaseAction } = useTestRepositoryStore()
   const [isEditing, setIsEditing] = React.useState(false)
+  const [isSaving, setIsSaving] = React.useState(false)
+  const [editState, setEditState] = React.useState<CaseEditState | null>(null)
 
   const testCase = activeCaseId ? getCaseById(activeCaseId) : null
   const isOpen = !!testCase
 
+  // Initialise edit state when entering edit mode
+  const handleStartEdit = () => {
+    if (!testCase) return
+    setEditState({
+      title: testCase.title,
+      description: testCase.description ?? '',
+      status: testCase.status,
+      priority: testCase.priority,
+      severity: testCase.severity,
+      type: testCase.type,
+      automationStatus: testCase.automationStatus,
+      estimatedTime: testCase.estimatedTime != null ? String(testCase.estimatedTime) : '',
+    })
+    setIsEditing(true)
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditing(false)
+    setEditState(null)
+  }
+
+  const handleEditChange = (field: keyof CaseEditState, value: string) => {
+    setEditState((prev) => prev ? { ...prev, [field]: value } : prev)
+  }
+
+  const handleSave = async () => {
+    if (!testCase || !editState) return
+    setIsSaving(true)
+    try {
+      await updateCaseAction(projectId, testCase.id, {
+        title: editState.title,
+        description: editState.description || undefined,
+        status: editState.status as TestCaseItem['status'],
+        priority: editState.priority as TestCaseItem['priority'],
+        severity: editState.severity as TestCaseItem['severity'],
+        type: editState.type as TestCaseItem['type'],
+        automationStatus: editState.automationStatus as TestCaseItem['automationStatus'],
+        estimatedTime: editState.estimatedTime ? Number(editState.estimatedTime) : undefined,
+      })
+      toast.success('Test case saved')
+      setIsEditing(false)
+      setEditState(null)
+    } catch (err) {
+      if (err instanceof ApiError && err.errors.length > 0) {
+        err.errors.forEach((e) => toast.error(e.message))
+      } else {
+        toast.error(err instanceof Error ? err.message : 'Failed to save test case')
+      }
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   const handleClose = () => {
     setActiveCase(null)
     setIsEditing(false)
+    setEditState(null)
   }
 
   if (!testCase) return null
@@ -480,13 +565,14 @@ export function CaseDetailDrawer() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setIsEditing(false)}
+                    onClick={handleCancelEdit}
+                    disabled={isSaving}
                   >
                     Cancel
                   </Button>
-                  <Button size="sm" className="gap-1.5">
+                  <Button size="sm" className="gap-1.5" onClick={handleSave} disabled={isSaving}>
                     <Save className="h-4 w-4" />
-                    Save
+                    {isSaving ? 'Saving…' : 'Save'}
                   </Button>
                 </>
               ) : (
@@ -494,7 +580,7 @@ export function CaseDetailDrawer() {
                   variant="outline"
                   size="sm"
                   className="gap-1.5"
-                  onClick={() => setIsEditing(true)}
+                  onClick={handleStartEdit}
                 >
                   <Edit className="h-4 w-4" />
                   Edit
@@ -530,7 +616,21 @@ export function CaseDetailDrawer() {
 
           <ScrollArea className="flex-1 px-4">
             <TabsContent value="details" className="m-0">
-              <DetailsTab testCase={testCase} isEditing={isEditing} />
+              <DetailsTab
+                testCase={testCase}
+                isEditing={isEditing}
+                editState={editState ?? {
+                  title: testCase.title,
+                  description: testCase.description ?? '',
+                  status: testCase.status,
+                  priority: testCase.priority,
+                  severity: testCase.severity,
+                  type: testCase.type,
+                  automationStatus: testCase.automationStatus,
+                  estimatedTime: testCase.estimatedTime != null ? String(testCase.estimatedTime) : '',
+                }}
+                onEditChange={handleEditChange}
+              />
             </TabsContent>
             <TabsContent value="steps" className="m-0">
               <StepsTab steps={testCase.steps} isEditing={isEditing} />

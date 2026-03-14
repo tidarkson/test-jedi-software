@@ -1,6 +1,7 @@
 'use client'
 
 import { create } from 'zustand'
+import { createRun, previewRunCases } from '@/lib/api/runs'
 import type { TestSuiteNode, TestCaseItem } from './test-repository-store'
 
 // Types for the wizard
@@ -64,8 +65,12 @@ export interface WizardState {
   
   // Step 2: Case Selection
   caseSelection: CaseSelection
+  previewCount: number
+  previewEstimatedMinutes: number
+  isPreviewLoading: boolean
   
   // Data (injected from parent)
+  projectId: string | null
   suites: TestSuiteNode[]
   cases: TestCaseItem[]
   environments: Environment[]
@@ -89,9 +94,12 @@ export interface WizardState {
   setIncludeOption: (option: CaseIncludeOption) => void
   setSelectionFilters: (filters: Partial<CaseSelection['filters']>) => void
   clearSelection: () => void
+  updatePreview: () => Promise<void>
+  submitWizard: (projectId: string) => Promise<string>
   
   // Data setters
   setData: (data: {
+    projectId?: string | null
     suites: TestSuiteNode[]
     cases: TestCaseItem[]
     environments: Environment[]
@@ -134,6 +142,24 @@ const initialCaseSelection: CaseSelection = {
     automationStatuses: [],
   },
 }
+
+function toApiEnum(value: string): string {
+  return value.replace(/-/g, '_').toUpperCase()
+}
+
+function toPreviewStatus(includeOption: CaseIncludeOption): string | undefined {
+  switch (includeOption) {
+    case 'failed-only':
+      return 'FAILED'
+    case 'untested-only':
+      return 'NOT_RUN'
+    default:
+      return undefined
+  }
+}
+
+let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let latestPreviewCall = 0
 
 // Helper to get all case IDs from a suite and its children
 function getAllCaseIdsFromSuite(
@@ -219,6 +245,10 @@ export const useTestRunWizardStore = create<WizardState>((set, get) => ({
     selectedCaseIds: new Set(),
     excludedCaseIds: new Set(),
   },
+  previewCount: 0,
+  previewEstimatedMinutes: 0,
+  isPreviewLoading: false,
+  projectId: null,
   suites: [],
   cases: [],
   environments: [],
@@ -342,7 +372,140 @@ export const useTestRunWizardStore = create<WizardState>((set, get) => ({
       selectedCaseIds: new Set(),
       excludedCaseIds: new Set(),
     },
+    previewCount: 0,
+    previewEstimatedMinutes: 0,
+    isPreviewLoading: false,
   })),
+
+  updatePreview: async () => {
+    const callId = ++latestPreviewCall
+
+    if (previewDebounceTimer) {
+      clearTimeout(previewDebounceTimer)
+      previewDebounceTimer = null
+    }
+
+    set({ isPreviewLoading: true })
+
+    await new Promise<void>((resolve) => {
+      previewDebounceTimer = setTimeout(() => {
+        previewDebounceTimer = null
+        resolve()
+      }, 500)
+    })
+
+    if (callId !== latestPreviewCall) {
+      return
+    }
+
+    const state = get()
+    const projectId = state.projectId
+    const { selectedSuiteIds, selectedCaseIds, excludedCaseIds, includeOption, filters } = state.caseSelection
+
+    const hasSelection = selectedSuiteIds.size > 0 || selectedCaseIds.size > 0
+    if (!projectId || !hasSelection) {
+      set({
+        previewCount: 0,
+        previewEstimatedMinutes: 0,
+        isPreviewLoading: false,
+      })
+      return
+    }
+
+    const apiFilters: Record<string, string> = {}
+    const priorityFilter = includeOption === 'high-priority'
+      ? 'HIGH'
+      : (filters.priorities[0] ? toApiEnum(filters.priorities[0]) : undefined)
+
+    if (priorityFilter) {
+      apiFilters.priority = priorityFilter
+    }
+
+    if (filters.types[0]) {
+      apiFilters.type = toApiEnum(filters.types[0])
+    }
+
+    if (filters.automationStatuses[0]) {
+      apiFilters.automationStatus = toApiEnum(filters.automationStatuses[0])
+    }
+
+    const statusFromInclude = toPreviewStatus(includeOption)
+    if (statusFromInclude) {
+      apiFilters.status = statusFromInclude
+    }
+
+    try {
+      const preview = await previewRunCases(projectId, {
+        suiteIds: Array.from(selectedSuiteIds),
+        caseIds: Array.from(selectedCaseIds),
+        excludeIds: Array.from(excludedCaseIds),
+        filters: Object.keys(apiFilters).length > 0 ? apiFilters : undefined,
+      })
+
+      if (callId !== latestPreviewCall) {
+        return
+      }
+
+      set({
+        previewCount: preview.count,
+        previewEstimatedMinutes: preview.estimatedMinutes,
+        isPreviewLoading: false,
+      })
+    } catch {
+      if (callId !== latestPreviewCall) {
+        return
+      }
+
+      set({ isPreviewLoading: false })
+    }
+  },
+
+  submitWizard: async (projectId) => {
+    const state = get()
+    const { configuration, caseSelection } = state
+
+    const runTypeMap: Record<RunType, 'MANUAL' | 'AUTOMATED' | 'HYBRID'> = {
+      manual: 'MANUAL',
+      automated: 'AUTOMATED',
+      mixed: 'HYBRID',
+    }
+
+    const selectedEnvironment = state.environments.find((environment) => environment.id === configuration.environmentId)
+
+    const createdRun = await createRun(projectId, {
+      title: configuration.title,
+      type: runTypeMap[configuration.runType],
+      environment: configuration.newEnvironment || selectedEnvironment?.name || 'Staging',
+      plannedStart: configuration.plannedStartDate?.toISOString(),
+      dueDate: configuration.dueDate?.toISOString(),
+      milestoneId: configuration.milestoneId || undefined,
+      buildNumber: configuration.buildNumber || undefined,
+      branch: configuration.branch || undefined,
+      defaultAssigneeId: configuration.defaultAssigneeId || undefined,
+      caseSelection: {
+        suiteIds: Array.from(caseSelection.selectedSuiteIds),
+        caseIds: Array.from(caseSelection.selectedCaseIds),
+        queryFilters: {
+          ...(caseSelection.filters.priorities[0]
+            ? { priority: toApiEnum(caseSelection.filters.priorities[0]) }
+            : {}),
+          ...(caseSelection.filters.types[0]
+            ? { type: toApiEnum(caseSelection.filters.types[0]) }
+            : {}),
+          ...(caseSelection.filters.automationStatuses[0]
+            ? { automationStatus: toApiEnum(caseSelection.filters.automationStatuses[0]) }
+            : {}),
+          ...(toPreviewStatus(caseSelection.includeOption)
+            ? { status: toPreviewStatus(caseSelection.includeOption) }
+            : {}),
+        },
+        excludeIds: Array.from(caseSelection.excludedCaseIds),
+      },
+    })
+
+    get().reset()
+    return createdRun.id
+  },
 
   setData: (data) => set(data),
 
@@ -433,6 +596,9 @@ export const useTestRunWizardStore = create<WizardState>((set, get) => ({
       selectedCaseIds: new Set(),
       excludedCaseIds: new Set(),
     },
+    previewCount: 0,
+    previewEstimatedMinutes: 0,
+    isPreviewLoading: false,
   }),
 }))
 

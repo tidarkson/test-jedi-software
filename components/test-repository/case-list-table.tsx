@@ -36,6 +36,7 @@ import {
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { useTestRepositoryStore, type TestCaseItem } from '@/lib/store/test-repository-store'
+import { toast } from 'sonner'
 
 type SortKey = 'id' | 'title' | 'priority' | 'type' | 'status' | 'automationStatus' | 'lastRunDate' | 'author'
 type SortDirection = 'asc' | 'desc'
@@ -56,6 +57,7 @@ const priorityStyles: Record<string, { bg: string; text: string; border: string 
 const automationStyles: Record<string, { bg: string; text: string; border: string }> = {
   automated: { bg: '#DCFCE7', text: '#15803D', border: '#BBF7D0' },
   manual: { bg: '#F3F4F6', text: '#4B5563', border: '#E5E7EB' },
+  'partially-automated': { bg: '#E0E7FF', text: '#3730A3', border: '#C7D2FE' },
   'to-automate': { bg: '#E0E7FF', text: '#4338CA', border: '#C7D2FE' },
 }
 
@@ -66,9 +68,15 @@ const typeLabels: Record<string, string> = {
   integration: 'Integration',
   e2e: 'E2E',
   performance: 'Performance',
+  security: 'Security',
+  usability: 'Usability',
 }
 
-export function CaseListTable() {
+interface CaseListTableProps {
+  projectId: string
+}
+
+export function CaseListTable({ projectId }: CaseListTableProps) {
   const {
     selectedCaseIds,
     toggleCaseSelection,
@@ -76,6 +84,9 @@ export function CaseListTable() {
     clearCaseSelection,
     setActiveCase,
     getFilteredCases,
+    isBulkOperating,
+    deleteCaseAction,
+    bulkCaseOperationAction,
   } = useTestRepositoryStore()
 
   const [sort, setSort] = React.useState<SortState>({ key: 'id', direction: 'asc' })
@@ -156,8 +167,44 @@ export function CaseListTable() {
     )
   }
 
+  const selectedIds = Array.from(selectedCaseIds)
+
+  const handleBulkDelete = async () => {
+    try {
+      await bulkCaseOperationAction(projectId, { operation: 'delete', caseIds: selectedIds })
+      toast.success(`Deleted ${selectedIds.length} test case(s)`)
+    } catch {
+      toast.error('Failed to delete test cases')
+    }
+  }
+
+  const handleBulkArchive = async () => {
+    try {
+      await bulkCaseOperationAction(projectId, { operation: 'archive', caseIds: selectedIds })
+      toast.success(`Archived ${selectedIds.length} test case(s)`)
+    } catch {
+      toast.error('Failed to archive test cases')
+    }
+  }
+
+  const handleSingleDelete = async (id: string) => {
+    try {
+      await deleteCaseAction(projectId, id)
+      toast.success('Test case deleted')
+    } catch {
+      toast.error('Failed to delete test case')
+    }
+  }
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex flex-col h-full">
+      {/* Bulk operation loading overlay */}
+      {isBulkOperating && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/60 backdrop-blur-sm">
+          <span className="text-sm text-muted-foreground animate-pulse">Processing…</span>
+        </div>
+      )}
+
       {/* Bulk action toolbar */}
       {selectedCaseIds.size > 0 && (
         <div className="flex items-center gap-2 p-2 bg-muted/50 border-b">
@@ -165,19 +212,31 @@ export function CaseListTable() {
             {selectedCaseIds.size} selected
           </span>
           <div className="h-4 w-px bg-border" />
-          <Button variant="outline" size="sm" className="h-7 gap-1.5">
+          <Button variant="outline" size="sm" className="h-7 gap-1.5" disabled={isBulkOperating}>
             <Move className="h-3.5 w-3.5" />
             Move
           </Button>
-          <Button variant="outline" size="sm" className="h-7 gap-1.5">
+          <Button variant="outline" size="sm" className="h-7 gap-1.5" disabled={isBulkOperating}>
             <Edit className="h-3.5 w-3.5" />
             Edit
           </Button>
-          <Button variant="outline" size="sm" className="h-7 gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5"
+            disabled={isBulkOperating}
+            onClick={handleBulkArchive}
+          >
             <Archive className="h-3.5 w-3.5" />
             Archive
           </Button>
-          <Button variant="outline" size="sm" className="h-7 gap-1.5 text-destructive hover:text-destructive">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 text-destructive hover:text-destructive"
+            disabled={isBulkOperating}
+            onClick={handleBulkDelete}
+          >
             <Trash2 className="h-3.5 w-3.5" />
             Delete
           </Button>
@@ -247,6 +306,8 @@ export function CaseListTable() {
             ) : (
               sortedCases.map((testCase) => {
                 const isSelected = selectedCaseIds.has(testCase.id)
+                const priorityStyle = priorityStyles[testCase.priority] ?? priorityStyles.medium
+                const automationStyle = automationStyles[testCase.automationStatus] ?? automationStyles.manual
                 return (
                   <TableRow
                     key={testCase.id}
@@ -299,9 +360,9 @@ export function CaseListTable() {
                         variant="outline"
                         className="text-[10px] font-medium capitalize"
                         style={{
-                          backgroundColor: priorityStyles[testCase.priority].bg,
-                          color: priorityStyles[testCase.priority].text,
-                          borderColor: priorityStyles[testCase.priority].border,
+                          backgroundColor: priorityStyle.bg,
+                          color: priorityStyle.text,
+                          borderColor: priorityStyle.border,
                         }}
                       >
                         {testCase.priority}
@@ -309,7 +370,7 @@ export function CaseListTable() {
                     </TableCell>
                     <TableCell>
                       <span className="text-xs text-muted-foreground">
-                        {typeLabels[testCase.type]}
+                        {typeLabels[testCase.type] ?? testCase.type}
                       </span>
                     </TableCell>
                     <TableCell>
@@ -320,9 +381,9 @@ export function CaseListTable() {
                         variant="outline"
                         className="text-[10px] font-medium capitalize"
                         style={{
-                          backgroundColor: automationStyles[testCase.automationStatus].bg,
-                          color: automationStyles[testCase.automationStatus].text,
-                          borderColor: automationStyles[testCase.automationStatus].border,
+                          backgroundColor: automationStyle.bg,
+                          color: automationStyle.text,
+                          borderColor: automationStyle.border,
                         }}
                       >
                         {testCase.automationStatus === 'to-automate' ? 'To Automate' : testCase.automationStatus}
@@ -371,7 +432,10 @@ export function CaseListTable() {
                             <Archive className="mr-2 h-4 w-4" />
                             Archive
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive focus:text-destructive">
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onSelect={() => handleSingleDelete(testCase.id)}
+                          >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
                           </DropdownMenuItem>

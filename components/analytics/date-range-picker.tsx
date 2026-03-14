@@ -24,6 +24,11 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
   const [tempStartDate, setTempStartDate] = React.useState<Date | undefined>(value?.startDate)
   const [tempEndDate, setTempEndDate] = React.useState<Date | undefined>(value?.endDate)
 
+  React.useEffect(() => {
+    setTempStartDate(value?.startDate)
+    setTempEndDate(value?.endDate)
+  }, [value?.startDate, value?.endDate])
+
   const presets = [
     { label: 'Last 7 days', range: 'last_7d' as DateRange },
     { label: 'Last 30 days', range: 'last_30d' as DateRange },
@@ -42,12 +47,28 @@ export function DateRangePicker({ value, onChange, className }: DateRangePickerP
     return 'Custom range'
   }
 
+  const resolvePresetRange = (range: Exclude<DateRange, 'custom'>) => {
+    const endDate = new Date()
+    const startDate = new Date(endDate)
+
+    const daySpanByRange: Record<Exclude<DateRange, 'custom'>, number> = {
+      last_7d: 6,
+      last_30d: 29,
+      last_90d: 89,
+    }
+
+    startDate.setDate(endDate.getDate() - daySpanByRange[range])
+
+    return { range, startDate, endDate }
+  }
+
   const handlePresetClick = (range: DateRange) => {
     if (range === 'custom') {
       setTempStartDate(undefined)
       setTempEndDate(undefined)
+      onChange({ range: 'custom' })
     } else {
-      onChange({ range })
+      onChange(resolvePresetRange(range))
       setIsOpen(false)
     }
   }

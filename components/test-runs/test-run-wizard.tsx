@@ -12,7 +12,7 @@ import {
   type RiskThreshold,
   type CaseIncludeOption,
 } from '@/lib/store/test-run-wizard-store'
-import { mockSuites, mockCases } from '@/lib/data/mock-test-data'
+import { useTestRepositoryStore } from '@/lib/store/test-repository-store'
 import type { TestSuiteNode, TestCaseItem } from '@/lib/store/test-repository-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,6 +23,7 @@ import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -59,6 +60,7 @@ import {
   Layers,
 } from 'lucide-react'
 import { format } from 'date-fns'
+import { toast } from 'sonner'
 
 // Step indicator component
 function StepIndicator({
@@ -478,18 +480,30 @@ function StepCaseSelection() {
     suites,
     cases,
     caseSelection,
-    toggleCaseSelection,
     excludeCase,
     setIncludeOption,
     setSelectionFilters,
+    updatePreview,
     getSelectedCases,
-    getEstimatedEffort,
     getDuplicateSuites,
+    previewCount,
+    previewEstimatedMinutes,
+    isPreviewLoading,
   } = useTestRunWizardStore()
 
   const selectedCases = getSelectedCases()
-  const estimatedEffort = getEstimatedEffort()
   const duplicateSuites = getDuplicateSuites()
+
+  React.useEffect(() => {
+    void updatePreview()
+  }, [
+    caseSelection.selectedSuiteIds,
+    caseSelection.selectedCaseIds,
+    caseSelection.excludedCaseIds,
+    caseSelection.includeOption,
+    caseSelection.filters,
+    updatePreview,
+  ])
 
   const includeOptions: { value: CaseIncludeOption; label: string }[] = [
     { value: 'all', label: 'All Selected Cases' },
@@ -546,12 +560,20 @@ function StepCaseSelection() {
         <div className="flex items-center gap-4 rounded-lg border bg-muted/30 p-3">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">{selectedCases.length} Cases</span>
+            {isPreviewLoading ? (
+              <Skeleton className="h-4 w-20" />
+            ) : (
+              <span className="text-sm font-medium">{previewCount} Cases</span>
+            )}
           </div>
           <Separator orientation="vertical" className="h-4" />
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">{formatDuration(estimatedEffort)}</span>
+            {isPreviewLoading ? (
+              <Skeleton className="h-4 w-16" />
+            ) : (
+              <span className="text-sm font-medium">{formatDuration(previewEstimatedMinutes)}</span>
+            )}
           </div>
         </div>
 
@@ -661,13 +683,14 @@ function StepReview() {
     milestones,
     teamMembers,
     getSelectedCases,
-    getEstimatedEffort,
     getCaseCountBySuite,
     suites,
+    previewCount,
+    previewEstimatedMinutes,
+    isPreviewLoading,
   } = useTestRunWizardStore()
 
   const selectedCases = getSelectedCases()
-  const estimatedEffort = getEstimatedEffort()
   const caseCountBySuite = getCaseCountBySuite()
 
   const environment = environments.find(e => e.id === configuration.environmentId)
@@ -844,7 +867,11 @@ function StepReview() {
             <div className="flex items-center gap-2">
               <FileText className="h-5 w-5 text-muted-foreground" />
               <div>
-                <p className="text-2xl font-bold">{selectedCases.length}</p>
+                {isPreviewLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <p className="text-2xl font-bold">{previewCount}</p>
+                )}
                 <p className="text-xs text-muted-foreground">Total Cases</p>
               </div>
             </div>
@@ -852,7 +879,11 @@ function StepReview() {
             <div className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-muted-foreground" />
               <div>
-                <p className="text-2xl font-bold">{formatDuration(estimatedEffort)}</p>
+                {isPreviewLoading ? (
+                  <Skeleton className="h-8 w-20" />
+                ) : (
+                  <p className="text-2xl font-bold">{formatDuration(previewEstimatedMinutes)}</p>
+                )}
                 <p className="text-xs text-muted-foreground">Estimated Effort</p>
               </div>
             </div>
@@ -872,8 +903,15 @@ function StepReview() {
 }
 
 // Main Wizard Component
-export function TestRunWizard() {
+export function TestRunWizard({ projectId }: { projectId: string | null }) {
   const router = useRouter()
+  const {
+    suites: repositorySuites,
+    cases: repositoryCases,
+    loadSuites,
+    loadCases,
+  } = useTestRepositoryStore()
+
   const {
     currentStep,
     completedSteps,
@@ -881,29 +919,54 @@ export function TestRunWizard() {
     setData,
     nextStep,
     prevStep,
-    getSelectedCases,
+    previewCount,
+    submitWizard,
     reset,
   } = useTestRunWizardStore()
 
-  // Initialize data
+  // Load repository data for suite/case selection
+  React.useEffect(() => {
+    async function loadRepositoryData() {
+      if (!projectId) {
+        setData({
+          projectId: null,
+          suites: [],
+          cases: [],
+          environments: mockEnvironments,
+          milestones: mockMilestones,
+          teamMembers: mockTeamMembers,
+        })
+        return
+      }
+
+      try {
+        await Promise.all([loadSuites(projectId), loadCases(projectId)])
+      } catch {
+        toast.error('Failed to load repository suites and cases')
+      }
+    }
+
+    void loadRepositoryData()
+  }, [projectId, loadSuites, loadCases, setData])
+
+  // Initialize wizard data
   React.useEffect(() => {
     setData({
-      suites: mockSuites,
-      cases: mockCases,
+      projectId,
+      suites: repositorySuites,
+      cases: repositoryCases,
       environments: mockEnvironments,
       milestones: mockMilestones,
       teamMembers: mockTeamMembers,
     })
-  }, [setData])
-
-  const selectedCases = getSelectedCases()
+  }, [projectId, repositorySuites, repositoryCases, setData])
 
   const canProceed = () => {
     switch (currentStep) {
       case 1:
         return configuration.title.trim().length > 0
       case 2:
-        return selectedCases.length > 0
+        return previewCount > 0
       case 3:
         return true
       default:
@@ -911,14 +974,19 @@ export function TestRunWizard() {
     }
   }
 
-  const handleCreate = () => {
-    // In a real app, this would call an API to create the test run
-    console.log('Creating test run:', {
-      configuration,
-      cases: selectedCases,
-    })
-    reset()
-    router.push('/test-runs')
+  const handleCreate = async () => {
+    if (!projectId) {
+      toast.error('No active project selected')
+      return
+    }
+
+    try {
+      const newRunId = await submitWizard(projectId)
+      router.push(`/test-runs/${newRunId}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create test run'
+      toast.error(message)
+    }
   }
 
   const handleCancel = () => {
@@ -1000,7 +1068,7 @@ export function TestRunWizard() {
               <ChevronRight className="ml-2 h-4 w-4" />
             </Button>
           ) : (
-            <Button onClick={handleCreate} disabled={!canProceed()}>
+            <Button onClick={() => void handleCreate()} disabled={!canProceed()}>
               <PlayCircle className="mr-2 h-4 w-4" />
               Create Test Run
             </Button>

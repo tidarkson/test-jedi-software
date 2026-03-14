@@ -1,19 +1,24 @@
 'use client'
 
 import * as React from 'react'
+import { Suspense } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { AppShell } from '@/components/layout/app-shell'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { BreadcrumbItem } from '@/types'
 import { RunDashboard } from '@/components/test-runs'
 import { useRunDashboardStore } from '@/lib/store/run-dashboard-store'
+import { useProjectStore } from '@/lib/store/project-store'
+import { closeRun, cloneRun, exportRun } from '@/lib/api/runs'
 import { toast } from 'sonner'
 
-export default function TestRunDashboardPage() {
+function TestRunDashboardPageContent() {
   const params = useParams()
   const router = useRouter()
   const id = params?.id as string
+  const currentProjectId = useProjectStore((state) => state.currentProjectId)
 
   const { run, isLoading, isPolling, lastUpdated, fetchRun, startPolling, stopPolling } =
     useRunDashboardStore()
@@ -37,32 +42,51 @@ export default function TestRunDashboardPage() {
     // router.push(`/test-runs/${id}/edit`)
   }
 
-  const handleClone = () => {
-    toast.success('Test run cloned successfully!')
-    // router.push(`/test-runs/${id}/clone`)
+  const handleClone = async () => {
+    if (!currentProjectId) {
+      toast.error('Select a project before cloning a run')
+      return
+    }
+
+    try {
+      const clonedRun = await cloneRun(currentProjectId, id)
+      toast.success('Test run cloned successfully')
+      router.push(`/test-runs/${clonedRun.id}`)
+    } catch {
+      toast.error('Failed to clone test run')
+    }
   }
 
-  const handleCloseRun = () => {
-    toast.success('Test run closed successfully')
-    // API call to close run
+  const handleCloseRun = async () => {
+    if (!currentProjectId) {
+      toast.error('Select a project before closing a run')
+      return
+    }
+
+    try {
+      await closeRun(currentProjectId, id)
+      await fetchRun(id)
+    } catch {
+      toast.error('Failed to close test run')
+    }
   }
 
-  const handleExport = () => {
-    if (run) {
-      const data = JSON.stringify({
-        run: run,
-        exportedAt: new Date().toISOString(),
-      }, null, 2)
-      
-      const element = document.createElement('a')
-      element.setAttribute('href', 'data:application/json;charset=utf-8,' + encodeURIComponent(data))
-      element.setAttribute('download', `test-run-${id}-export.json`)
-      element.style.display = 'none'
-      document.body.appendChild(element)
-      element.click()
-      document.body.removeChild(element)
-      
-      toast.success('Test run exported successfully')
+  const handleExport = async () => {
+    if (!currentProjectId) {
+      toast.error('Select a project before exporting a run')
+      return
+    }
+
+    try {
+      const exportResponse = await exportRun(currentProjectId, id)
+
+      if (exportResponse.downloadUrl) {
+        window.open(exportResponse.downloadUrl, '_blank', 'noopener,noreferrer')
+      }
+
+      toast.success('Run export started successfully')
+    } catch {
+      toast.error('Failed to export test run')
     }
   }
 
@@ -90,5 +114,13 @@ export default function TestRunDashboardPage() {
         />
       </div>
     </AppShell>
+  )
+}
+
+export default function TestRunDashboardPage() {
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <TestRunDashboardPageContent />
+    </Suspense>
   )
 }

@@ -3,6 +3,8 @@
 import * as React from 'react'
 import { Mail, UserPlus } from 'lucide-react'
 import type { OrgRole } from '@/types/admin'
+import { useAdminStore } from '@/lib/store/admin-store'
+import { useAuthStore } from '@/lib/store/auth-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,13 +25,11 @@ import {
 } from '@/components/ui/select'
 import { toast } from 'sonner'
 
-interface InviteUserModalProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onInvite: (email: string, role: OrgRole) => void
-}
+export function InviteUserModal() {
+  const user = useAuthStore((state) => state.user)
+  const addInvitation = useAdminStore((state) => state.addInvitation)
 
-export function InviteUserModal({ open, onOpenChange, onInvite }: InviteUserModalProps) {
+  const [open, setOpen] = React.useState(false)
   const [email, setEmail] = React.useState('')
   const [role, setRole] = React.useState<OrgRole>('member')
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -48,21 +48,41 @@ export function InviteUserModal({ open, onOpenChange, onInvite }: InviteUserModa
     }
 
     setIsSubmitting(true)
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    onInvite(email, role)
-    toast.success(`Invitation sent to ${email}`)
-    
-    setEmail('')
-    setRole('member')
-    setIsSubmitting(false)
-    onOpenChange(false)
+
+    try {
+      const orgId = user?.organizationId
+
+      if (!orgId) {
+        toast.error('Missing organization context')
+        return
+      }
+
+      await addInvitation(orgId, {
+        email,
+        role,
+        invitedBy: user?.name,
+      })
+
+      toast.success(`Invitation sent to ${email}`)
+      setEmail('')
+      setRole('member')
+      setOpen(false)
+    } catch (apiError) {
+      const message = apiError instanceof Error ? apiError.message : 'Failed to send invitation'
+      toast.error(message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <Button onClick={() => setOpen(true)}>
+        <UserPlus className="mr-2 h-4 w-4" />
+        Invite User
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -119,7 +139,7 @@ export function InviteUserModal({ open, onOpenChange, onInvite }: InviteUserModa
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
@@ -128,6 +148,7 @@ export function InviteUserModal({ open, onOpenChange, onInvite }: InviteUserModa
           </DialogFooter>
         </form>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
   )
 }

@@ -19,19 +19,23 @@ import type { Webhook } from '@/types/integrations'
 
 interface WebhookTableProps {
   webhooks: Webhook[]
+  isLoading?: boolean
   onAdd: () => void
   onEdit: (webhook: Webhook) => void
-  onDelete: (webhookId: string) => void
+  onDelete: (webhookId: string) => Promise<void>
   onViewLogs: (webhook: Webhook) => void
 }
 
 export function WebhookTable({
   webhooks,
+  isLoading = false,
   onAdd,
   onEdit,
   onDelete,
   onViewLogs,
 }: WebhookTableProps) {
+  const [deletingWebhookId, setDeletingWebhookId] = React.useState<string | null>(null)
+
   const handleCopyUrl = (url: string) => {
     navigator.clipboard.writeText(url)
     toast.success('URL copied to clipboard')
@@ -54,6 +58,15 @@ export function WebhookTable({
     return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Active</Badge>
   }
 
+  const handleDeleteWebhook = async (webhookId: string) => {
+    try {
+      setDeletingWebhookId(webhookId)
+      await onDelete(webhookId)
+    } finally {
+      setDeletingWebhookId(null)
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -69,7 +82,15 @@ export function WebhookTable({
         </Button>
       </div>
 
-      {webhooks.length === 0 ? (
+      {isLoading ? (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center space-y-2 py-8">
+              <p className="text-sm text-muted-foreground">Loading webhooks...</p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : webhooks.length === 0 ? (
         <Card>
           <CardContent className="pt-6">
             <div className="text-center space-y-2 py-8">
@@ -156,10 +177,15 @@ export function WebhookTable({
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => onDelete(webhook.id)}
+                        onClick={() => handleDeleteWebhook(webhook.id)}
+                        disabled={deletingWebhookId === webhook.id}
                         title="Delete webhook"
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        {deletingWebhookId === webhook.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        )}
                       </Button>
                     </div>
                   </TableCell>

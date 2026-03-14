@@ -16,6 +16,8 @@ export function ReadinessGauge({
   showLabel = true,
   className,
 }: ReadinessGaugeProps) {
+  const normalizedScore = Math.max(0, Math.min(100, Math.round(score || 0)))
+
   const getColor = (score: number) => {
     if (score < 40) return 'from-red-500 to-red-600'
     if (score < 70) return 'from-orange-500 to-orange-600'
@@ -36,7 +38,7 @@ export function ReadinessGauge({
 
   const config = sizeConfig[size]
   const circumference = 2 * Math.PI * 44
-  const strokeDashoffset = circumference - ((score / 100) * circumference)
+  const strokeDashoffset = circumference - ((normalizedScore / 100) * circumference)
 
   return (
     <div className={cn('flex flex-col items-center gap-3', className)}>
@@ -66,7 +68,7 @@ export function ReadinessGauge({
         >
           <defs>
             <linearGradient
-              id={`gradient-${score}`}
+              id={`gradient-${normalizedScore}`}
               x1="0%"
               y1="0%"
               x2="100%"
@@ -74,11 +76,11 @@ export function ReadinessGauge({
             >
               <stop
                 offset="0%"
-                stopColor={getColor(score).split(' ')[0].replace('from-', '')}
+                stopColor={getColor(normalizedScore).split(' ')[0].replace('from-', '')}
               />
               <stop
                 offset="100%"
-                stopColor={getColor(score).split(' ')[1].replace('to-', '')}
+                stopColor={getColor(normalizedScore).split(' ')[1].replace('to-', '')}
               />
             </linearGradient>
           </defs>
@@ -86,7 +88,7 @@ export function ReadinessGauge({
             cx={config.outer / 2}
             cy={config.outer / 2}
             r={44}
-            stroke={`url(#gradient-${score})`}
+            stroke={`url(#gradient-${normalizedScore})`}
             strokeWidth="8"
             fill="none"
             strokeDasharray={circumference}
@@ -98,7 +100,7 @@ export function ReadinessGauge({
 
         {/* Center content */}
         <div className="flex flex-col items-center gap-1">
-          <div className={cn('font-bold', config.fontSize)}>{score}</div>
+          <div className={cn('font-bold', config.fontSize)}>{normalizedScore}</div>
           <div className="text-xs text-muted-foreground">%</div>
         </div>
       </div>
@@ -106,7 +108,7 @@ export function ReadinessGauge({
       {showLabel && (
         <div className="text-center">
           <p className="text-sm font-medium text-foreground">
-            {getStatusText(score)}
+            {getStatusText(normalizedScore)}
           </p>
         </div>
       )}

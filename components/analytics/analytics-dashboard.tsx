@@ -1,7 +1,6 @@
 'use client'
 
 import * as React from 'react'
-import { useRouter } from 'next/navigation'
 import { useAnalyticsStore } from '@/lib/store/analytics-store'
 import { DateRangeFilter } from '@/types'
 import {
@@ -40,6 +39,7 @@ import { cn } from '@/lib/utils'
 
 interface AnalyticsDashboardProps {
   className?: string
+  projectId?: string | null
 }
 
 const MILESTONES = [
@@ -56,11 +56,11 @@ const ENVIRONMENTS = [
   { label: 'Development', value: 'dev' },
 ]
 
-export function AnalyticsDashboard({ className }: AnalyticsDashboardProps) {
-  const router = useRouter()
+export function AnalyticsDashboard({ className, projectId }: AnalyticsDashboardProps) {
   const {
     data,
     isLoading,
+    sectionLoading,
     dateRange,
     selectedMilestone,
     selectedEnvironment,
@@ -73,14 +73,11 @@ export function AnalyticsDashboard({ className }: AnalyticsDashboardProps) {
 
   const [exportModalOpen, setExportModalOpen] = React.useState(false)
 
-  // Initial data fetch
-  React.useEffect(() => {
-    fetchAnalytics()
-  }, [fetchAnalytics])
-
   const handleDateRangeChange = (range: DateRangeFilter) => {
     setDateRange(range)
-    refreshData()
+    if (projectId) {
+      fetchAnalytics(projectId, range)
+    }
   }
 
   // Loading state
@@ -213,19 +210,31 @@ export function AnalyticsDashboard({ className }: AnalyticsDashboardProps) {
         {/* Tab 1: Quality Trends */}
         <TabsContent value="quality-trends" className="space-y-6">
           <div className="grid gap-6">
-            <PassFailTrendChart
-              data={data.qualityTrends.passFailTrends}
-              height={350}
-            />
+            {sectionLoading.passFailTrend ? (
+              <Skeleton className="h-[420px] w-full" />
+            ) : (
+              <PassFailTrendChart
+                data={data.qualityTrends.passFailTrends}
+                height={350}
+              />
+            )}
             <div className="grid gap-6 md:grid-cols-2">
-              <FailureDistributionChart
-                data={data.qualityTrends.failureDistribution}
-                height={300}
-              />
-              <AutomationCoverageTrendChart
-                data={data.qualityTrends.automationCoverage}
-                height={300}
-              />
+              {sectionLoading.failureDistribution ? (
+                <Skeleton className="h-[420px] w-full" />
+              ) : (
+                <FailureDistributionChart
+                  data={data.qualityTrends.failureDistribution}
+                  height={300}
+                />
+              )}
+              {sectionLoading.automationCoverage ? (
+                <Skeleton className="h-[420px] w-full" />
+              ) : (
+                <AutomationCoverageTrendChart
+                  data={data.qualityTrends.automationCoverage}
+                  height={300}
+                />
+              )}
             </div>
           </div>
         </TabsContent>
@@ -233,30 +242,50 @@ export function AnalyticsDashboard({ className }: AnalyticsDashboardProps) {
         {/* Tab 2: Suite Health */}
         <TabsContent value="suite-health" className="space-y-6">
           <div className="grid gap-6">
-            <SuiteHealthHeatmapChart
-              data={data.suiteHealth.heatmaps}
-            />
-            <SuiteHealthScoreTable
-              data={data.suiteHealth.healthScores}
-            />
+            {sectionLoading.suiteHeatmap ? (
+              <Skeleton className="h-[360px] w-full" />
+            ) : (
+              <SuiteHealthHeatmapChart
+                data={data.suiteHealth.heatmaps}
+              />
+            )}
+            {sectionLoading.suiteHealthScores ? (
+              <Skeleton className="h-[360px] w-full" />
+            ) : (
+              <SuiteHealthScoreTable
+                data={data.suiteHealth.healthScores}
+              />
+            )}
           </div>
         </TabsContent>
 
         {/* Tab 3: Defect Analytics */}
         <TabsContent value="defect-analytics" className="space-y-6">
           <div className="grid gap-6">
-            <DefectLeakageTrendChart
-              data={data.defectAnalytics.leakageTrend}
-              height={350}
-            />
+            {sectionLoading.defectLeakageTrend ? (
+              <Skeleton className="h-[420px] w-full" />
+            ) : (
+              <DefectLeakageTrendChart
+                data={data.defectAnalytics.leakageTrend}
+                height={350}
+              />
+            )}
             <div className="grid gap-6 md:grid-cols-2">
-              <DefectStatusChart
-                data={data.defectAnalytics.defectStatus}
-                height={300}
-              />
-              <MTTRGauge
-                data={data.defectAnalytics.mttr}
-              />
+              {sectionLoading.defectStatus ? (
+                <Skeleton className="h-[420px] w-full" />
+              ) : (
+                <DefectStatusChart
+                  data={data.defectAnalytics.defectStatus}
+                  height={300}
+                />
+              )}
+              {sectionLoading.mttr ? (
+                <Skeleton className="h-[420px] w-full" />
+              ) : (
+                <MTTRGauge
+                  data={data.defectAnalytics.mttr}
+                />
+              )}
             </div>
           </div>
         </TabsContent>
@@ -264,16 +293,28 @@ export function AnalyticsDashboard({ className }: AnalyticsDashboardProps) {
         {/* Tab 4: Team Performance */}
         <TabsContent value="team-performance" className="space-y-6">
           <div className="grid gap-6">
-            <WorkloadHeatmapChart
-              data={data.teamPerformance.workloadHeatmaps}
-            />
-            <ExecutionVelocityChart
-              data={data.teamPerformance.velocity}
-              height={350}
-            />
-            <TesterLeaderboardTable
-              data={data.teamPerformance.leaderboard}
-            />
+            {sectionLoading.workloadHeatmap ? (
+              <Skeleton className="h-[360px] w-full" />
+            ) : (
+              <WorkloadHeatmapChart
+                data={data.teamPerformance.workloadHeatmaps}
+              />
+            )}
+            {sectionLoading.executionVelocity ? (
+              <Skeleton className="h-[420px] w-full" />
+            ) : (
+              <ExecutionVelocityChart
+                data={data.teamPerformance.velocity}
+                height={350}
+              />
+            )}
+            {sectionLoading.testerLeaderboard ? (
+              <Skeleton className="h-[320px] w-full" />
+            ) : (
+              <TesterLeaderboardTable
+                data={data.teamPerformance.leaderboard}
+              />
+            )}
           </div>
         </TabsContent>
       </Tabs>
@@ -282,6 +323,8 @@ export function AnalyticsDashboard({ className }: AnalyticsDashboardProps) {
       <ExportModal
         open={exportModalOpen}
         onOpenChange={setExportModalOpen}
+        projectId={projectId}
+        dateRange={dateRange}
       />
     </div>
   )

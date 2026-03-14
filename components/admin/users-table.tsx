@@ -3,11 +3,12 @@
 import * as React from 'react'
 import { MoreHorizontal, Mail, Shield, UserX, Clock } from 'lucide-react'
 import type { OrgMember, OrgRole } from '@/types/admin'
-import { formatRelativeTime } from '@/lib/data/mock-admin-data'
 import { useAdminStore } from '@/lib/store/admin-store'
+import { useAuthStore } from '@/lib/store/auth-store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Spinner } from '@/components/ui/spinner'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
   Table,
@@ -41,6 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { toast } from 'sonner'
 
 
 
@@ -57,22 +59,96 @@ const statusColors: Record<string, string> = {
   suspended: 'bg-red-100 text-red-700',
 }
 
+function formatRelativeTime(date: Date): string {
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / (1000 * 60))
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export function UsersTable() {
-  const { users: members, currentUser, updateUserRole, removeUser } = useAdminStore()
-  const currentUserId = currentUser?.id || ''
+  const user = useAuthStore((state) => state.user)
+  const {
+    users: members,
+    loadUsers,
+    updateUserRole,
+    removeUser,
+    isUsersLoading,
+    error,
+  } = useAdminStore()
+
+  const currentUserId = user?.id || ''
+  const orgId = user?.organizationId || ''
   const [removeDialogOpen, setRemoveDialogOpen] = React.useState(false)
   const [userToRemove, setUserToRemove] = React.useState<OrgMember | null>(null)
+  const [updatingUserId, setUpdatingUserId] = React.useState<string | null>(null)
+  const [isRemoving, setIsRemoving] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!orgId) {
+      return
+    }
+
+    void loadUsers(orgId).catch((apiError) => {
+      toast.error(apiError.message ?? 'Failed to load users')
+    })
+  }, [loadUsers, orgId])
+
+  const handleRoleChange = async (memberId: string, role: OrgRole) => {
+    if (!orgId) {
+      toast.error('Missing organization context')
+      return
+    }
+
+    try {
+      setUpdatingUserId(memberId)
+      await updateUserRole(orgId, memberId, role)
+      toast.success('User role updated')
+    } catch (apiError) {
+      const message = apiError instanceof Error ? apiError.message : 'Failed to update role'
+      toast.error(message)
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
 
   const handleRemoveClick = (member: OrgMember) => {
     setUserToRemove(member)
     setRemoveDialogOpen(true)
   }
 
-  const confirmRemove = () => {
-    if (userToRemove) {
-      removeUser(userToRemove.id)
+  const confirmRemove = async () => {
+    if (!userToRemove) {
+      return
+    }
+
+    if (!orgId) {
+      toast.error('Missing organization context')
+      return
+    }
+
+    try {
+      setIsRemoving(true)
+      await removeUser(orgId, userToRemove.id)
+      toast.success('User removed from organization')
       setRemoveDialogOpen(false)
       setUserToRemove(null)
+    } catch (apiError) {
+      const message = apiError instanceof Error ? apiError.message : 'Failed to remove user'
+      toast.error(message)
+    } finally {
+      setIsRemoving(false)
     }
   }
 
@@ -90,7 +166,23 @@ export function UsersTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {members.map((member) => {
+            {isUsersLoading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="h-24 text-center">
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Spinner className="h-4 w-4" />
+                    Loading users...
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : members.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  No organization members found
+                </TableCell>
+              </TableRow>
+            ) : (
+              members.map((member) => {
               const isCurrentUser = member.id === currentUserId
               const isOwner = member.role === 'owner'
 
@@ -127,8 +219,10 @@ export function UsersTable() {
                     ) : (
                       <Select
                         value={member.role}
-                        onValueChange={(value) => updateUserRole(member.id, value as OrgRole)}
-                        disabled={isCurrentUser}
+                        onValueChange={(value) => {
+                          void handleRoleChange(member.id, value as OrgRole)
+                        }}
+                        disabled={isCurrentUser || updatingUserId === member.id}
                       >
                         <SelectTrigger className="h-8 w-[120px]">
                           <SelectValue />
@@ -170,7 +264,7 @@ export function UsersTable() {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-destructive"
-                          disabled={isCurrentUser || isOwner}
+                          disabled={isCurrentUser || isOwner || isRemoving}
                           onClick={() => handleRemoveClick(member)}
                         >
                           <UserX className="mr-2 h-4 w-4" />
@@ -181,10 +275,15 @@ export function UsersTable() {
                   </TableCell>
                 </TableRow>
               )
-            })}
+            })
+            )}
           </TableBody>
         </Table>
       </div>
+
+      {error && (
+        <p className="text-sm text-destructive">{error}</p>
+      )}
 
       <AlertDialog open={removeDialogOpen} onOpenChange={setRemoveDialogOpen}>
         <AlertDialogContent>
@@ -199,9 +298,10 @@ export function UsersTable() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmRemove}
+              disabled={isRemoving}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Remove User
+              {isRemoving ? 'Removing...' : 'Remove User'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

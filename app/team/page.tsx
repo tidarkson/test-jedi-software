@@ -6,20 +6,31 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
 import { AdminGuard, UsersTable, InviteUserModal, PendingInvitations } from '@/components/admin'
 import { useAdminStore } from '@/lib/store/admin-store'
+import { useAuthStore } from '@/lib/store/auth-store'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Users, UserPlus, Clock } from 'lucide-react'
 
 export default function TeamPage() {
-  const { users, invitations } = useAdminStore()
+  const user = useAuthStore((state) => state.user)
+  const { users, invitations, loadUsers, isUsersLoading, error } = useAdminStore()
+  const orgId = user?.organizationId || ''
+
+  React.useEffect(() => {
+    if (!orgId) {
+      return
+    }
+
+    void loadUsers(orgId)
+  }, [loadUsers, orgId])
   
   const breadcrumbs = [
     { title: 'Administration', href: '#' },
     { title: 'Team Management' },
   ]
 
-  const activeUsers = users.filter(u => u.status === 'ACTIVE').length
-  const pendingInvites = invitations.filter(i => i.status === 'PENDING').length
+  const activeUsers = users.filter((member) => member.status === 'active').length
+  const pendingInvites = invitations.filter((invite) => invite.status === 'pending').length
 
   return (
     <AppShell
@@ -50,7 +61,7 @@ export default function TeamPage() {
                 <CardContent>
                   <div className="text-2xl font-bold">{users.length}</div>
                   <p className="text-xs text-muted-foreground">
-                    {activeUsers} active
+                    {isUsersLoading ? 'Loading...' : `${activeUsers} active`}
                   </p>
                 </CardContent>
               </Card>
@@ -73,7 +84,7 @@ export default function TeamPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {users.filter(u => u.role === 'ADMIN' || u.role === 'OWNER').length}
+                    {users.filter((member) => member.role === 'admin' || member.role === 'owner').length}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     With admin access
@@ -81,6 +92,8 @@ export default function TeamPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
 
             {/* Tabs */}
             <Tabs defaultValue="members" className="space-y-4">

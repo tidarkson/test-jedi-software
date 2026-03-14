@@ -33,7 +33,18 @@ import {
   ChevronsUpDown,
   ChevronsDownUp,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -50,24 +61,33 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useTestRepositoryStore, type TestSuiteNode } from '@/lib/store/test-repository-store'
 
 interface SuiteTreeItemProps {
   suite: TestSuiteNode
   depth: number
+  projectId: string
 }
 
-function SuiteTreeItem({ suite, depth }: SuiteTreeItemProps) {
+function SuiteTreeItem({ suite, depth, projectId }: SuiteTreeItemProps) {
   const {
     selectedSuiteId,
     expandedSuiteIds,
     setSelectedSuite,
     toggleSuiteExpanded,
+    createSuiteAction,
+    cloneSuiteAction,
+    lockSuiteAction,
+    archiveSuiteAction,
+    deleteSuiteAction,
   } = useTestRepositoryStore()
 
   const isSelected = selectedSuiteId === suite.id
   const isExpanded = expandedSuiteIds.has(suite.id)
   const hasChildren = suite.children.length > 0
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false)
+  const [isDeleting, setIsDeleting] = React.useState(false)
 
   const {
     attributes,
@@ -90,6 +110,62 @@ function SuiteTreeItem({ suite, depth }: SuiteTreeItemProps) {
   const handleToggleExpand = (e: React.MouseEvent) => {
     e.stopPropagation()
     toggleSuiteExpanded(suite.id)
+  }
+
+  const handleNewSuite = async () => {
+    try {
+      await createSuiteAction(projectId, {
+        name: 'New Suite',
+        parentSuiteId: suite.id,
+      })
+      toast.success('Suite created')
+    } catch {
+      toast.error('Failed to create suite')
+    }
+  }
+
+  const handleClone = async () => {
+    try {
+      await cloneSuiteAction(projectId, suite.id)
+      toast.success('Suite cloned')
+    } catch {
+      toast.error('Failed to clone suite')
+    }
+  }
+
+  const handleLock = async () => {
+    try {
+      await lockSuiteAction(projectId, suite.id)
+      toast.success(suite.isLocked ? 'Suite unlocked' : 'Suite locked')
+    } catch {
+      toast.error('Failed to toggle suite lock')
+    }
+  }
+
+  const handleArchive = async () => {
+    try {
+      await archiveSuiteAction(projectId, suite.id)
+      toast.success(suite.isArchived ? 'Suite unarchived' : 'Suite archived')
+    } catch {
+      toast.error('Failed to archive suite')
+    }
+  }
+
+  const handleDelete = async () => {
+    setIsDeleteDialogOpen(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true)
+    try {
+      await deleteSuiteAction(projectId, suite.id)
+      toast.success('Suite deleted')
+      setIsDeleteDialogOpen(false)
+    } catch {
+      toast.error('Failed to delete suite')
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   return (
@@ -174,34 +250,60 @@ function SuiteTreeItem({ suite, depth }: SuiteTreeItemProps) {
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48">
-          <ContextMenuItem>
+          <ContextMenuItem onSelect={handleNewSuite}>
             <Plus className="mr-2 h-4 w-4" />
             New Suite
           </ContextMenuItem>
-          <ContextMenuItem>
-            <Plus className="mr-2 h-4 w-4" />
-            New Test Case
+          <ContextMenuItem asChild>
+            <a href={`/test-case/new?suiteId=${suite.id}`}>
+              <Plus className="mr-2 h-4 w-4" />
+              New Test Case
+            </a>
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem>
+          <ContextMenuItem onSelect={handleClone}>
             <Copy className="mr-2 h-4 w-4" />
             Clone Suite
           </ContextMenuItem>
-          <ContextMenuItem>
+          <ContextMenuItem onSelect={handleLock}>
             <Lock className="mr-2 h-4 w-4" />
             {suite.isLocked ? 'Unlock' : 'Lock'} Suite
           </ContextMenuItem>
-          <ContextMenuItem>
+          <ContextMenuItem onSelect={handleArchive}>
             <Archive className="mr-2 h-4 w-4" />
             {suite.isArchived ? 'Unarchive' : 'Archive'} Suite
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuItem className="text-destructive focus:text-destructive">
+          <ContextMenuItem
+            className="text-destructive focus:text-destructive"
+            onSelect={handleDelete}
+          >
             <Trash2 className="mr-2 h-4 w-4" />
             Delete Suite
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete suite?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{suite.name}". This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Render children if expanded */}
       {isExpanded && hasChildren && (
@@ -212,7 +314,7 @@ function SuiteTreeItem({ suite, depth }: SuiteTreeItemProps) {
           {suite.children
             .sort((a, b) => a.order - b.order)
             .map(child => (
-              <SuiteTreeItem key={child.id} suite={child} depth={depth + 1} />
+              <SuiteTreeItem key={child.id} suite={child} depth={depth + 1} projectId={projectId} />
             ))}
         </SortableContext>
       )}
@@ -220,14 +322,20 @@ function SuiteTreeItem({ suite, depth }: SuiteTreeItemProps) {
   )
 }
 
-export function SuiteTree() {
+interface SuiteTreeProps {
+  projectId: string
+}
+
+export function SuiteTree({ projectId }: SuiteTreeProps) {
   const {
     suites,
     selectedSuiteId,
+    isLoadingSuites,
     setSelectedSuite,
     reorderSuites,
     expandAllSuites,
     collapseAllSuites,
+    createSuiteAction,
   } = useTestRepositoryStore()
 
   const sensors = useSensors(
@@ -244,14 +352,21 @@ export function SuiteTree() {
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     if (over && active.id !== over.id) {
-      // For simplicity, we handle reordering at root level
-      // In a real app, you'd determine the parent from the drop location
       const orderedIds = suites
         .map(s => s.id)
         .filter(id => id !== active.id)
       const overIndex = orderedIds.indexOf(over.id as string)
       orderedIds.splice(overIndex, 0, active.id as string)
       reorderSuites(null, orderedIds)
+    }
+  }
+
+  const handleNewRootSuite = async () => {
+    try {
+      await createSuiteAction(projectId, { name: 'New Suite' })
+      toast.success('Suite created')
+    } catch {
+      toast.error('Failed to create suite')
     }
   }
 
@@ -286,7 +401,7 @@ export function SuiteTree() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleNewRootSuite}>
                 <Plus className="mr-2 h-4 w-4" />
                 New Suite
               </DropdownMenuItem>
@@ -320,22 +435,30 @@ export function SuiteTree() {
       {/* Tree */}
       <ScrollArea className="flex-1">
         <div className="p-2">
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext
-              items={suites.map(s => s.id)}
-              strategy={verticalListSortingStrategy}
+          {isLoadingSuites ? (
+            <div className="space-y-2 p-1">
+              <Skeleton className="h-7 w-full" />
+              <Skeleton className="h-7 w-5/6 ml-3" />
+              <Skeleton className="h-7 w-4/6 ml-6" />
+            </div>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
             >
-              {suites
-                .sort((a, b) => a.order - b.order)
-                .map(suite => (
-                  <SuiteTreeItem key={suite.id} suite={suite} depth={0} />
-                ))}
-            </SortableContext>
-          </DndContext>
+              <SortableContext
+                items={suites.map(s => s.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {suites
+                  .sort((a, b) => a.order - b.order)
+                  .map(suite => (
+                    <SuiteTreeItem key={suite.id} suite={suite} depth={0} projectId={projectId} />
+                  ))}
+              </SortableContext>
+            </DndContext>
+          )}
         </div>
       </ScrollArea>
     </div>

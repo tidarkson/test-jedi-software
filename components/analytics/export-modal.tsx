@@ -28,10 +28,18 @@ import {
 } from '@/components/ui/select'
 import { Checkbox as UICheckbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
+import { DateRangeFilter } from '@/types'
+import {
+  exportAnalytics,
+  getAnalyticsExportStatus,
+  resolveDateRangeParams,
+} from '@/lib/api/analytics'
 
 interface ExportModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  projectId?: string | null
+  dateRange: DateRangeFilter
 }
 
 const EXPORT_SECTIONS = [
@@ -41,7 +49,23 @@ const EXPORT_SECTIONS = [
   { id: 'team-performance', title: 'Team Performance', description: 'Workload and execution velocity' },
 ]
 
-export function ExportModal({ open, onOpenChange }: ExportModalProps) {
+async function waitFor(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function triggerDownload(downloadUrl: string): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const anchor = window.document.createElement('a')
+  anchor.href = downloadUrl
+  anchor.target = '_blank'
+  anchor.rel = 'noopener noreferrer'
+  anchor.click()
+}
+
+export function ExportModal({ open, onOpenChange, projectId, dateRange }: ExportModalProps) {
   const [format, setFormat] = React.useState<'pdf' | 'xlsx'>('pdf')
   const [selectedSections, setSelectedSections] = React.useState<Set<string>>(
     new Set(EXPORT_SECTIONS.map((s) => s.id))
@@ -49,6 +73,7 @@ export function ExportModal({ open, onOpenChange }: ExportModalProps) {
   const [generateSummary, setGenerateSummary] = React.useState(false)
   const [isExporting, setIsExporting] = React.useState(false)
   const [showPreview, setShowPreview] = React.useState(false)
+  const [progressMessage, setProgressMessage] = React.useState<string | null>(null)
 
   const handleSectionToggle = (sectionId: string) => {
     const newSet = new Set(selectedSections)
@@ -74,18 +99,61 @@ export function ExportModal({ open, onOpenChange }: ExportModalProps) {
       return
     }
 
+    if (!projectId) {
+      toast.error('Select a project before exporting analytics')
+      return
+    }
+
     setIsExporting(true)
+    setProgressMessage('Preparing export...')
+
     try {
-      // Simulate export process
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-      
-      const sections = Array.from(selectedSections).join(', ')
-      toast.success(`Analytics exported as ${format.toUpperCase()}\nSections: ${sections}`)
+      const rangeParams = resolveDateRangeParams(dateRange)
+
+      const exportResponse = await exportAnalytics(projectId, {
+        format,
+        sections: Array.from(selectedSections),
+        filters: {
+          startDate: rangeParams.dateFrom,
+          endDate: rangeParams.dateTo,
+        },
+      })
+
+      let downloadUrl = exportResponse.downloadUrl
+
+      if (!downloadUrl && exportResponse.jobId) {
+        setProgressMessage('Generating export file...')
+
+        const maxAttempts = 20
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          await waitFor(1500)
+          const status = await getAnalyticsExportStatus(exportResponse.jobId)
+
+          if (status.status === 'completed' && status.downloadUrl) {
+            downloadUrl = status.downloadUrl
+            break
+          }
+
+          if (status.status === 'failed') {
+            throw new Error(status.error || 'Export generation failed')
+          }
+        }
+      }
+
+      if (!downloadUrl) {
+        throw new Error('Export generated without a download link')
+      }
+
+      setProgressMessage('Starting download...')
+      triggerDownload(downloadUrl)
+      toast.success(`Analytics exported as ${format.toUpperCase()}`)
       onOpenChange(false)
     } catch (error) {
-      toast.error('Failed to export analytics')
+      const message = error instanceof Error ? error.message : 'Failed to export analytics'
+      toast.error(message)
     } finally {
       setIsExporting(false)
+      setProgressMessage(null)
     }
   }
 
@@ -246,6 +314,10 @@ export function ExportModal({ open, onOpenChange }: ExportModalProps) {
             )}
           </Button>
         </DialogFooter>
+
+        {isExporting && progressMessage ? (
+          <p className="text-sm text-muted-foreground">{progressMessage}</p>
+        ) : null}
       </DialogContent>
     </Dialog>
   )

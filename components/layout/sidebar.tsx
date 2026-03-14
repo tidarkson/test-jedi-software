@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAppShell } from './app-shell'
+import { useSidebarCounts } from '@/hooks/use-sidebar-counts'
 import {
   TestTube2,
   FolderTree,
@@ -52,10 +53,10 @@ const navigation: NavGroup[] = [
     title: 'Test Management',
     items: [
       { title: 'Test Repository', href: '/test-repository', icon: FolderTree },
-      { title: 'Test Runs', href: '/test-runs', icon: PlayCircle, badge: 3 },
+      { title: 'Test Runs', href: '/test-runs', icon: PlayCircle },
       { title: 'Test Plans', href: '/test-plans', icon: ClipboardList },
       { title: 'Execute', href: '/execute', icon: TestTube2 },
-      { title: 'Defects', href: '/defects', icon: Bug, badge: 12 },
+      { title: 'Defects', href: '/defects', icon: Bug },
     ],
   },
   {
@@ -77,6 +78,30 @@ const navigation: NavGroup[] = [
 export function Sidebar() {
   const pathname = usePathname()
   const { sidebarCollapsed, setSidebarCollapsed } = useAppShell()
+  const { activeRuns, openDefects } = useSidebarCounts()
+
+  const navigationWithCounts = React.useMemo<NavGroup[]>(() => {
+    return navigation.map((group) => {
+      if (group.title !== 'Test Management') {
+        return group
+      }
+
+      return {
+        ...group,
+        items: group.items.map((item) => {
+          if (item.href === '/test-runs') {
+            return { ...item, badge: activeRuns }
+          }
+
+          if (item.href === '/defects') {
+            return { ...item, badge: openDefects }
+          }
+
+          return item
+        }),
+      }
+    })
+  }, [activeRuns, openDefects])
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -97,7 +122,7 @@ export function Sidebar() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-2">
-          {navigation.map((group) => (
+          {navigationWithCounts.map((group) => (
             <div key={group.title} className="mb-4">
               {!sidebarCollapsed && (
                 <h3 className="mb-1 px-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -123,7 +148,7 @@ export function Sidebar() {
                       {!sidebarCollapsed && (
                         <>
                           <span className="flex-1 truncate">{item.title}</span>
-                          {item.badge && (
+                          {item.badge !== undefined && (
                             <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
                               {item.badge}
                             </span>
@@ -140,7 +165,7 @@ export function Sidebar() {
                           <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
                           <TooltipContent side="right" className="flex items-center gap-2">
                             {item.title}
-                            {item.badge && (
+                            {item.badge !== undefined && (
                               <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground">
                                 {item.badge}
                               </span>

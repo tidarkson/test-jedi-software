@@ -5,9 +5,7 @@ import { useForm } from 'react-hook-form'
 import * as z from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -46,6 +44,7 @@ import {
 import { AlertCircle, CheckCircle2, Upload, Loader2 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { toast } from 'sonner'
+import type { AutomationImportResponse } from '@/lib/api/integrations'
 import type { AutomationImportRecord, ImportedCase } from '@/types/integrations'
 
 const importFormSchema = z.object({
@@ -58,9 +57,10 @@ interface AutomationImportPanelProps {
   onOpenChange: (open: boolean) => void
   onImport: (data: {
     runId: string
-    cases: ImportedCase[]
+    runName?: string
+    payload: unknown[]
     fileName: string
-  }) => Promise<void>
+  }) => Promise<AutomationImportResponse>
   importHistory: AutomationImportRecord[]
   testRuns?: Array<{ id: string; name: string }>
 }
@@ -82,7 +82,9 @@ export function AutomationImportPanel({
     'select'
   )
   const [uploadedCases, setUploadedCases] = React.useState<ImportedCase[]>([])
+  const [rawPayload, setRawPayload] = React.useState<unknown[]>([])
   const [fileName, setFileName] = React.useState('')
+  const [importResult, setImportResult] = React.useState<AutomationImportResponse | null>(null)
   const [isLoading, setIsLoading] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
@@ -106,37 +108,35 @@ export function AutomationImportPanel({
         const content = event.target?.result as string
         const data = JSON.parse(content)
 
-        // Simulate parsing and matching
-        const mockCases: ImportedCase[] = [
-          {
-            id: 'case-1',
-            name: 'User login with valid credentials',
-            matched: true,
-            existingCaseId: 'tc-001',
-            status: { passed: true, failed: false, blocked: false },
-          },
-          {
-            id: 'case-2',
-            name: 'User registration flow',
-            matched: true,
-            existingCaseId: 'tc-045',
-            status: { passed: true, failed: false, blocked: false },
-          },
-          {
-            id: 'case-3',
-            name: 'Payment processing',
-            matched: false,
-            status: { passed: true, failed: false, blocked: false },
-          },
-          {
-            id: 'case-4',
-            name: 'API response validation',
-            matched: false,
-            status: { passed: false, failed: true, blocked: false },
-          },
-        ]
+        const normalizedPayload = Array.isArray(data)
+          ? data
+          : Array.isArray((data as Record<string, unknown>)?.results)
+            ? ((data as Record<string, unknown>).results as unknown[])
+            : []
 
-        setUploadedCases(mockCases)
+        if (normalizedPayload.length === 0) {
+          toast.error('No results found in uploaded JSON payload')
+          return
+        }
+
+        setRawPayload(normalizedPayload)
+        setImportResult(null)
+        setUploadedCases(
+          normalizedPayload.map((item, index) => {
+            const row = item as Record<string, unknown>
+            const status = String(row.status ?? 'FAILED').toLowerCase()
+            return {
+              id: String(row.id ?? `case-${index + 1}`),
+              name: String(row.name ?? row.title ?? `Case ${index + 1}`),
+              matched: false,
+              status: {
+                passed: status === 'passed',
+                failed: status === 'failed',
+                blocked: status === 'blocked',
+              },
+            }
+          })
+        )
         setImportStep('preview')
         toast.success('File parsed successfully')
       } catch (error) {
@@ -151,32 +151,36 @@ export function AutomationImportPanel({
     if (!value.trim()) return
 
     try {
-      JSON.parse(value)
-      // Simulate parsing
-      const mockCases: ImportedCase[] = [
-        {
-          id: 'case-1',
-          name: 'User login with valid credentials',
-          matched: true,
-          existingCaseId: 'tc-001',
-          status: { passed: true, failed: false, blocked: false },
-        },
-        {
-          id: 'case-2',
-          name: 'User registration flow',
-          matched: true,
-          existingCaseId: 'tc-045',
-          status: { passed: true, failed: false, blocked: false },
-        },
-        {
-          id: 'case-3',
-          name: 'Payment processing',
-          matched: false,
-          status: { passed: true, failed: false, blocked: false },
-        },
-      ]
+      const parsed = JSON.parse(value)
+      const normalizedPayload = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray((parsed as Record<string, unknown>)?.results)
+          ? ((parsed as Record<string, unknown>).results as unknown[])
+          : []
 
-      setUploadedCases(mockCases)
+      if (normalizedPayload.length === 0) {
+        toast.error('No results found in pasted JSON payload')
+        return
+      }
+
+      setRawPayload(normalizedPayload)
+      setImportResult(null)
+      setUploadedCases(
+        normalizedPayload.map((item, index) => {
+          const row = item as Record<string, unknown>
+          const status = String(row.status ?? 'FAILED').toLowerCase()
+          return {
+            id: String(row.id ?? `case-${index + 1}`),
+            name: String(row.name ?? row.title ?? `Case ${index + 1}`),
+            matched: false,
+            status: {
+              passed: status === 'passed',
+              failed: status === 'failed',
+              blocked: status === 'blocked',
+            },
+          }
+        })
+      )
       setFileName('pasted-data.json')
       setImportStep('preview')
       toast.success('JSON parsed successfully')
@@ -185,26 +189,29 @@ export function AutomationImportPanel({
     }
   }
 
+  const matchedCount = importResult?.matched ?? uploadedCases.filter((c) => c.matched).length
+  const unmatchedCount = importResult?.unmatched ?? uploadedCases.filter((c) => !c.matched).length
   const matchedCases = uploadedCases.filter((c) => c.matched)
   const unmatchedCases = uploadedCases.filter((c) => !c.matched)
 
   const handleImport = async () => {
     const runId = form.getValues('runId')
-    if (!runId || uploadedCases.length === 0) {
+    if (!runId || rawPayload.length === 0) {
       toast.error('Please select a test run and upload test results')
       return
     }
 
     setIsLoading(true)
     try {
-      await onImport({
+      const runName = testRuns.find((run) => run.id === runId)?.name
+      const response = await onImport({
         runId,
-        cases: uploadedCases,
+        runName,
+        payload: rawPayload,
         fileName,
       })
+      setImportResult(response)
       setIsLoading(false)
-      onOpenChange(false)
-      resetForm()
       toast.success('Test results imported successfully')
     } catch (error) {
       setIsLoading(false)
@@ -215,6 +222,8 @@ export function AutomationImportPanel({
   const resetForm = () => {
     setImportStep('select')
     setUploadedCases([])
+    setRawPayload([])
+    setImportResult(null)
     setFileName('')
     form.reset()
     if (fileInputRef.current) {
@@ -358,7 +367,7 @@ export function AutomationImportPanel({
                   </CardHeader>
                   <CardContent>
                     <p className="text-2xl font-bold text-green-600">
-                      {matchedCases.length}
+                      {matchedCount}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Will be imported
@@ -372,7 +381,7 @@ export function AutomationImportPanel({
                   </CardHeader>
                   <CardContent>
                     <p className="text-2xl font-bold text-yellow-600">
-                      {unmatchedCases.length}
+                      {unmatchedCount}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Will create new cases
@@ -381,13 +390,23 @@ export function AutomationImportPanel({
                 </Card>
               </div>
 
-              {unmatchedCases.length > 0 && (
+              {unmatchedCount > 0 && (
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>Unmatched Cases</AlertTitle>
                   <AlertDescription>
-                    {unmatchedCases.length} cases in the import file don't match
+                    {unmatchedCount} cases in the import file don't match
                     existing test cases. New cases will be created automatically.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {importResult && (
+                <Alert>
+                  <CheckCircle2 className="h-4 w-4" />
+                  <AlertTitle>Import Result</AlertTitle>
+                  <AlertDescription>
+                    Matched {importResult.matched}/{importResult.totalResults}, unmatched {importResult.unmatched}.
                   </AlertDescription>
                 </Alert>
               )}
@@ -395,10 +414,10 @@ export function AutomationImportPanel({
               <Tabs defaultValue="matched">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="matched">
-                    Matched ({matchedCases.length})
+                    Matched ({matchedCount})
                   </TabsTrigger>
                   <TabsTrigger value="unmatched">
-                    Unmatched ({unmatchedCases.length})
+                    Unmatched ({unmatchedCount})
                   </TabsTrigger>
                 </TabsList>
 
@@ -554,7 +573,7 @@ export function AutomationImportPanel({
           {importStep === 'preview' && (
             <Button onClick={handleImport} disabled={isLoading} className="gap-2">
               {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Import {matchedCases.length} Cases
+              Import {rawPayload.length} Cases
             </Button>
           )}
         </DialogFooter>

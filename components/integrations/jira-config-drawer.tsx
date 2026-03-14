@@ -58,7 +58,7 @@ const jiraFieldMappingSchema = z.object({
 interface JiraConfigDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onConnect: (config: any) => void
+  onConnect: (config: any) => Promise<void>
   integration?: JiraIntegration
   mode?: 'connect' | 'configure'
 }
@@ -105,15 +105,13 @@ export function JiraConfigDrawer({
     },
   })
 
-  const handleOAuthConnect = () => {
+  const handleOAuthConnect = async () => {
     setIsLoading(true)
-    // Simulate OAuth flow
-    setTimeout(() => {
-      setOauthConnected(true)
+    try {
+      await onConnect({})
+    } finally {
       setIsLoading(false)
-      toast.success('Connected to Jira successfully')
-      setCurrentStep('project')
-    }, 2000)
+    }
   }
 
   const handleTestConnection = async () => {

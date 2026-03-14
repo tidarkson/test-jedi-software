@@ -77,10 +77,18 @@ const statusLabels: Record<TestStatus, string> = {
 }
 
 export interface StatusBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  status: TestStatus
+  status: TestStatus | string
   size?: 'sm' | 'md' | 'lg'
   showIcon?: boolean
   showLabel?: boolean
+}
+
+function normalizeStatus(status: TestStatus | string): TestStatus {
+  if (status in statusStyles) {
+    return status as TestStatus
+  }
+
+  return 'na'
 }
 
 export function StatusBadge({
@@ -91,10 +99,11 @@ export function StatusBadge({
   className,
   ...props
 }: StatusBadgeProps) {
-  const Icon = statusIcons[status]
-  const label = statusLabels[status]
+  const normalizedStatus = normalizeStatus(status)
+  const Icon = statusIcons[normalizedStatus]
+  const label = statusLabels[normalizedStatus]
   const iconSize = size === 'sm' ? 12 : size === 'lg' ? 16 : 14
-  const styles = statusStyles[status]
+  const styles = statusStyles[normalizedStatus]
 
   return (
     <span
@@ -132,14 +141,16 @@ export function StatusDot({
   status,
   className,
 }: {
-  status: TestStatus
+  status: TestStatus | string
   className?: string
 }) {
+  const normalizedStatus = normalizeStatus(status)
+
   return (
     <span
       className={cn('inline-block h-2 w-2 rounded-full', className)}
-      style={{ backgroundColor: statusDotColors[status] }}
-      title={statusLabels[status]}
+      style={{ backgroundColor: statusDotColors[normalizedStatus] }}
+      title={statusLabels[normalizedStatus]}
     />
   )
 }

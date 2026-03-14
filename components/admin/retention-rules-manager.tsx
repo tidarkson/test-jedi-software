@@ -3,6 +3,8 @@
 import * as React from 'react'
 import { Plus, Trash2, Clock, Archive, AlertTriangle } from 'lucide-react'
 import type { DataRetentionRule, AuditEntityType, RetentionAction } from '@/types/admin'
+import { useAdminStore } from '@/lib/store/admin-store'
+import { useAuthStore } from '@/lib/store/auth-store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,20 +54,39 @@ const actionLabels: Record<RetentionAction, string> = {
   delete: 'Delete Permanently',
 }
 
-interface RetentionRulesManagerProps {
-  rules: DataRetentionRule[]
-  onRulesChange: (rules: DataRetentionRule[]) => void
-}
+export function RetentionRulesManager() {
+  const user = useAuthStore((state) => state.user)
+  const {
+    retentionRules: rules,
+    loadRetentionRules,
+    addRetentionRule,
+    toggleRetentionRule,
+    deleteRetentionRule,
+    isRetentionRulesLoading,
+    error,
+  } = useAdminStore()
 
-export function RetentionRulesManager({ rules = [], onRulesChange = () => {} }: RetentionRulesManagerProps) {
+  const orgId = user?.organizationId || ''
+
   const [isCreateOpen, setIsCreateOpen] = React.useState(false)
   const [deleteRuleId, setDeleteRuleId] = React.useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [formData, setFormData] = React.useState({
     name: '',
     entityType: 'test_run' as AuditEntityType,
     olderThanDays: 90,
     action: 'archive' as RetentionAction,
   })
+
+  React.useEffect(() => {
+    if (!orgId) {
+      return
+    }
+
+    void loadRetentionRules(orgId).catch((apiError) => {
+      toast.error(apiError.message ?? 'Failed to load retention policies')
+    })
+  }, [loadRetentionRules, orgId])
 
   const resetForm = () => {
     setFormData({
@@ -76,9 +97,14 @@ export function RetentionRulesManager({ rules = [], onRulesChange = () => {} }: 
     })
   }
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!formData.name.trim()) {
       toast.error('Please enter a rule name')
+      return
+    }
+
+    if (!orgId) {
+      toast.error('Missing organization context')
       return
     }
 
@@ -94,17 +120,22 @@ export function RetentionRulesManager({ rules = [], onRulesChange = () => {} }: 
       createdAt: new Date(),
     }
 
-    onRulesChange([...rules, newRule])
-    toast.success('Retention rule created')
-    setIsCreateOpen(false)
-    resetForm()
+    try {
+      setIsSubmitting(true)
+      await addRetentionRule(orgId, newRule)
+      toast.success('Retention rule created')
+      setIsCreateOpen(false)
+      resetForm()
+    } catch (apiError) {
+      const message = apiError instanceof Error ? apiError.message : 'Failed to create retention rule'
+      toast.error(message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleToggleActive = (ruleId: string) => {
-    const updatedRules = rules.map((r) =>
-      r.id === ruleId ? { ...r, isActive: !r.isActive } : r
-    )
-    onRulesChange(updatedRules)
+    toggleRetentionRule(ruleId)
     
     const rule = rules.find((r) => r.id === ruleId)
     if (rule) {
@@ -114,7 +145,7 @@ export function RetentionRulesManager({ rules = [], onRulesChange = () => {} }: 
 
   const handleDelete = () => {
     if (deleteRuleId) {
-      onRulesChange(rules.filter((r) => r.id !== deleteRuleId))
+      deleteRetentionRule(deleteRuleId)
       toast.success('Retention rule deleted')
       setDeleteRuleId(null)
     }
@@ -136,7 +167,11 @@ export function RetentionRulesManager({ rules = [], onRulesChange = () => {} }: 
           </Button>
         </div>
 
-        {rules.length === 0 ? (
+        {isRetentionRulesLoading ? (
+          <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
+            Loading retention rules...
+          </div>
+        ) : rules.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center">
             <Clock className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">No retention rules defined</p>
@@ -197,6 +232,7 @@ export function RetentionRulesManager({ rules = [], onRulesChange = () => {} }: 
             ))}
           </div>
         )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
 
       {/* Create Dialog */}
@@ -282,7 +318,9 @@ export function RetentionRulesManager({ rules = [], onRulesChange = () => {} }: 
             <Button variant="outline" onClick={() => { setIsCreateOpen(false); resetForm(); }}>
               Cancel
             </Button>
-            <Button onClick={handleCreate}>Create Rule</Button>
+            <Button onClick={() => void handleCreate()} disabled={isSubmitting}>
+              {isSubmitting ? 'Creating...' : 'Create Rule'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

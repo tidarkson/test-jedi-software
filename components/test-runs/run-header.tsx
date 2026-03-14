@@ -24,7 +24,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Edit, Copy, XCircle, Download, MoreVertical, Calendar, AlertCircle } from 'lucide-react'
-import { toast } from 'sonner'
 
 interface RunHeaderProps {
   run: RunDashboardData
@@ -44,6 +43,7 @@ export function RunHeader({
   className,
 }: RunHeaderProps) {
   const [showCloseDialog, setShowCloseDialog] = React.useState(false)
+  const [isClosing, setIsClosing] = React.useState(false)
 
   const getStatusColor = (status: RunStatus) => {
     switch (status) {
@@ -79,15 +79,12 @@ export function RunHeader({
       document.body.appendChild(element)
       element.click()
       document.body.removeChild(element)
-      toast.success('Run exported successfully')
     }
   }
 
   const handleClone = () => {
     if (onClone) {
       onClone()
-    } else {
-      toast.success('Run cloned successfully')
     }
   }
 
@@ -222,14 +219,24 @@ export function RunHeader({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                onCloseRun?.()
+              onClick={async () => {
+                if (!onCloseRun) {
+                  setShowCloseDialog(false)
+                  return
+                }
+
+                setIsClosing(true)
+                try {
+                  await Promise.resolve(onCloseRun())
+                } finally {
+                  setIsClosing(false)
+                }
                 setShowCloseDialog(false)
-                toast.success('Run closed successfully')
               }}
+              disabled={isClosing}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Close Run
+              {isClosing ? 'Closing...' : 'Close Run'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

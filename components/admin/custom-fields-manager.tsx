@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import type { CustomField, CustomFieldType, CustomFieldAppliesTo, CustomFieldOption } from '@/types/admin'
 import { useAdminStore } from '@/lib/store/admin-store'
+import { useAuthStore } from '@/lib/store/auth-store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -163,11 +164,34 @@ function SortableFieldRow({ field, onEdit, onDelete, onPreview }: SortableFieldR
 }
 
 export function CustomFieldsManager() {
-  const { customFields: fields, addCustomField, updateCustomField, deleteCustomField, reorderCustomFields } = useAdminStore()
+  const user = useAuthStore((state) => state.user)
+  const {
+    customFields: fields,
+    loadCustomFields,
+    addCustomField,
+    updateCustomField,
+    deleteCustomField,
+    reorderCustomFields,
+    isCustomFieldsLoading,
+    error,
+  } = useAdminStore()
+
+  const orgId = user?.organizationId || ''
   const [isCreateOpen, setIsCreateOpen] = React.useState(false)
   const [editingField, setEditingField] = React.useState<CustomField | null>(null)
   const [previewField, setPreviewField] = React.useState<CustomField | null>(null)
   const [deleteFieldId, setDeleteFieldId] = React.useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!orgId) {
+      return
+    }
+
+    void loadCustomFields(orgId).catch((apiError) => {
+      toast.error(apiError.message ?? 'Failed to load custom fields')
+    })
+  }, [loadCustomFields, orgId])
 
   const [formData, setFormData] = React.useState({
     name: '',
@@ -206,24 +230,37 @@ export function CustomFieldsManager() {
     })
   }
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!formData.name.trim()) {
       toast.error('Please enter a field name')
       return
     }
 
-    addCustomField({
-      name: formData.name,
-      type: formData.type,
-      required: formData.required,
-      appliesTo: formData.appliesTo,
-      description: formData.description,
-      options: formData.options.length > 0 ? formData.options : undefined,
-      order: fields.length + 1,
-    })
-    toast.success('Custom field created')
-    setIsCreateOpen(false)
-    resetForm()
+    if (!orgId) {
+      toast.error('Missing organization context')
+      return
+    }
+
+    try {
+      setIsSubmitting(true)
+      await addCustomField(orgId, {
+        name: formData.name,
+        type: formData.type,
+        required: formData.required,
+        appliesTo: formData.appliesTo,
+        description: formData.description,
+        options: formData.options.length > 0 ? formData.options : undefined,
+        order: fields.length + 1,
+      })
+      toast.success('Custom field created')
+      setIsCreateOpen(false)
+      resetForm()
+    } catch (apiError) {
+      const message = apiError instanceof Error ? apiError.message : 'Failed to create custom field'
+      toast.error(message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleEdit = (field: CustomField) => {
@@ -238,30 +275,56 @@ export function CustomFieldsManager() {
     })
   }
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
     if (!editingField || !formData.name.trim()) {
       toast.error('Please enter a field name')
       return
     }
 
-    updateCustomField(editingField.id, {
-      name: formData.name,
-      type: formData.type,
-      required: formData.required,
-      appliesTo: formData.appliesTo,
-      description: formData.description,
-      options: formData.options.length > 0 ? formData.options : undefined,
-    })
-    toast.success('Custom field updated')
-    setEditingField(null)
-    resetForm()
+    if (!orgId) {
+      toast.error('Missing organization context')
+      return
+    }
+
+    try {
+      setIsSubmitting(true)
+      await updateCustomField(orgId, editingField.id, {
+        name: formData.name,
+        type: formData.type,
+        required: formData.required,
+        appliesTo: formData.appliesTo,
+        description: formData.description,
+        options: formData.options.length > 0 ? formData.options : undefined,
+      })
+      toast.success('Custom field updated')
+      setEditingField(null)
+      resetForm()
+    } catch (apiError) {
+      const message = apiError instanceof Error ? apiError.message : 'Failed to update custom field'
+      toast.error(message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (deleteFieldId) {
-      deleteCustomField(deleteFieldId)
-      toast.success('Custom field deleted')
-      setDeleteFieldId(null)
+      if (!orgId) {
+        toast.error('Missing organization context')
+        return
+      }
+
+      try {
+        setIsSubmitting(true)
+        await deleteCustomField(orgId, deleteFieldId)
+        toast.success('Custom field deleted')
+        setDeleteFieldId(null)
+      } catch (apiError) {
+        const message = apiError instanceof Error ? apiError.message : 'Failed to delete custom field'
+        toast.error(message)
+      } finally {
+        setIsSubmitting(false)
+      }
     }
   }
 
@@ -411,7 +474,11 @@ export function CustomFieldsManager() {
           </Button>
         </div>
 
-        {fields.length === 0 ? (
+        {isCustomFieldsLoading ? (
+          <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
+            Loading custom fields...
+          </div>
+        ) : fields.length === 0 ? (
           <div className="rounded-lg border border-dashed p-8 text-center">
             <Type className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">No custom fields defined</p>
@@ -437,6 +504,7 @@ export function CustomFieldsManager() {
             </SortableContext>
           </DndContext>
         )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
 
       {/* Create Dialog */}
@@ -453,7 +521,9 @@ export function CustomFieldsManager() {
             <Button variant="outline" onClick={() => { setIsCreateOpen(false); resetForm(); }}>
               Cancel
             </Button>
-            <Button onClick={handleCreate}>Create Field</Button>
+            <Button onClick={() => void handleCreate()} disabled={isSubmitting}>
+              {isSubmitting ? 'Creating...' : 'Create Field'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -472,7 +542,9 @@ export function CustomFieldsManager() {
             <Button variant="outline" onClick={() => { setEditingField(null); resetForm(); }}>
               Cancel
             </Button>
-            <Button onClick={handleUpdate}>Save Changes</Button>
+            <Button onClick={() => void handleUpdate()} disabled={isSubmitting}>
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -556,10 +628,11 @@ export function CustomFieldsManager() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDelete}
+              onClick={() => void handleDelete()}
+              disabled={isSubmitting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete Field
+              {isSubmitting ? 'Deleting...' : 'Delete Field'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

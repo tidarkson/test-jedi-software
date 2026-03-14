@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
-import { ThemeProvider } from '@/components/providers'
+import { ErrorBoundary } from '@/components/error-boundary'
+import { AuthProvider, ThemeProvider } from '@/components/providers'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
@@ -71,8 +72,10 @@ export default function RootLayout({
         className={`${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
         <ThemeProvider>
-          {children}
-          <Toaster />
+          <AuthProvider>
+            <ErrorBoundary>{children}</ErrorBoundary>
+            <Toaster />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

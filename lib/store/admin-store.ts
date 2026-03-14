@@ -2,195 +2,342 @@
 
 import { create } from 'zustand'
 import type { OrgMember, Invitation, CustomField, AuditLogEntry, DataRetentionRule } from '@/types/admin'
-import { currentUser, mockOrgMembers, mockInvitations, mockCustomFields, mockAuditLog, mockRetentionRules } from '@/lib/data/mock-admin-data'
+import { ApiError } from '@/lib/api/errors'
+import {
+  createCustomField,
+  createRetentionPolicy,
+  deleteCustomField as deleteCustomFieldRequest,
+  deleteOrgUser,
+  getAuditLogs,
+  getCustomFields,
+  getOrgUsers,
+  getRetentionPolicies,
+  inviteOrgUser,
+  updateCustomField as updateCustomFieldRequest,
+  updateOrgUserRole,
+  type AuditLogFilters,
+} from '@/lib/api/admin'
 
 type UserRole = 'owner' | 'admin' | 'member' | 'viewer'
 
 interface AdminState {
-  // Current user (for role-based access)
   currentUser: OrgMember | null
-  
-  // Users management
+
   users: OrgMember[]
   invitations: Invitation[]
-  
-  // Custom fields
   customFields: CustomField[]
-  
-  // Audit log
   auditLog: AuditLogEntry[]
-  
-  // Retention rules
   retentionRules: DataRetentionRule[]
-  
-  // Actions
+
+  isUsersLoading: boolean
+  isCustomFieldsLoading: boolean
+  isAuditLogLoading: boolean
+  isRetentionRulesLoading: boolean
+  error: string | null
+
   setCurrentUser: (user: OrgMember | null) => void
+  clearError: () => void
   isAdmin: () => boolean
-  
-  // User actions
-  updateUserRole: (userId: string, role: UserRole) => void
-  removeUser: (userId: string) => void
-  
-  // Invitation actions
-  addInvitation: (invitation: Omit<Invitation, 'id' | 'invitedAt' | 'expiresAt'>) => void
+
+  loadUsers: (orgId: string) => Promise<void>
+  loadCustomFields: (orgId: string) => Promise<void>
+  loadAuditLog: (orgId: string, filters?: AuditLogFilters) => Promise<void>
+  loadRetentionRules: (orgId: string) => Promise<void>
+
+  updateUserRole: (orgId: string, userId: string, role: UserRole) => Promise<void>
+  removeUser: (orgId: string, userId: string) => Promise<void>
+
+  addInvitation: (orgId: string, invitation: { email: string; role: UserRole; invitedBy?: string }) => Promise<void>
   cancelInvitation: (invitationId: string) => void
   resendInvitation: (invitationId: string) => void
-  
-  // Custom field actions
-  addCustomField: (field: Omit<CustomField, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => void
-  updateCustomField: (fieldId: string, updates: Partial<CustomField>) => void
-  deleteCustomField: (fieldId: string) => void
+
+  addCustomField: (
+    orgId: string,
+    field: Omit<CustomField, 'id' | 'createdAt' | 'updatedAt'>,
+  ) => Promise<void>
+  updateCustomField: (orgId: string, fieldId: string, updates: Partial<CustomField>) => Promise<void>
+  deleteCustomField: (orgId: string, fieldId: string) => Promise<void>
   reorderCustomFields: (fieldIds: string[]) => void
-  
-  // Retention rule actions
-  addRetentionRule: (rule: Omit<DataRetentionRule, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => void
+
+  addRetentionRule: (orgId: string, rule: Omit<DataRetentionRule, 'id' | 'createdAt'>) => Promise<void>
   updateRetentionRule: (ruleId: string, updates: Partial<DataRetentionRule>) => void
   deleteRetentionRule: (ruleId: string) => void
   toggleRetentionRule: (ruleId: string) => void
 }
 
 export const useAdminStore = create<AdminState>((set, get) => ({
-  // Initial state - set current user as admin for demo
-  currentUser: currentUser,
-  users: mockOrgMembers,
-  invitations: mockInvitations,
-  customFields: mockCustomFields,
-  auditLog: mockAuditLog,
-  retentionRules: mockRetentionRules,
-  
-  // Current user actions
+  currentUser: null,
+  users: [],
+  invitations: [],
+  customFields: [],
+  auditLog: [],
+  retentionRules: [],
+  isUsersLoading: false,
+  isCustomFieldsLoading: false,
+  isAuditLogLoading: false,
+  isRetentionRulesLoading: false,
+  error: null,
+
   setCurrentUser: (user) => set({ currentUser: user }),
-  
+  clearError: () => set({ error: null }),
+
   isAdmin: () => {
     const { currentUser } = get()
     return currentUser?.role === 'admin' || currentUser?.role === 'owner'
   },
-  
-  // User management actions
-  updateUserRole: (userId, role) => {
-    set((state) => ({
-      users: state.users.map((user) =>
-        user.id === userId ? { ...user, role } : user
-      ),
-    }))
-  },
-  
-  removeUser: (userId) => {
-    set((state) => ({
-      users: state.users.filter((user) => user.id !== userId),
-    }))
-  },
-  
-  // Invitation actions
-  addInvitation: (invitation) => {
-    const newInvitation: Invitation = {
-      ...invitation,
-      id: `inv-${Date.now()}`,
-      invitedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+
+  loadUsers: async (orgId) => {
+    set({ isUsersLoading: true, error: null })
+
+    try {
+      const users = await getOrgUsers(orgId)
+      set({ users, isUsersLoading: false, error: null })
+    } catch (error) {
+      const apiError = ApiError.fromResponse(error)
+      set({ isUsersLoading: false, error: apiError.message })
+      throw apiError
     }
-    set((state) => ({
-      invitations: [newInvitation, ...state.invitations],
-    }))
   },
-  
+
+  loadCustomFields: async (orgId) => {
+    set({ isCustomFieldsLoading: true, error: null })
+
+    try {
+      const customFields = await getCustomFields(orgId)
+      set({ customFields, isCustomFieldsLoading: false, error: null })
+    } catch (error) {
+      const apiError = ApiError.fromResponse(error)
+      set({ isCustomFieldsLoading: false, error: apiError.message })
+      throw apiError
+    }
+  },
+
+  loadAuditLog: async (orgId, filters) => {
+    set({ isAuditLogLoading: true, error: null })
+
+    try {
+      const auditLog = await getAuditLogs(orgId, filters)
+      set({ auditLog, isAuditLogLoading: false, error: null })
+    } catch (error) {
+      const apiError = ApiError.fromResponse(error)
+      set({ isAuditLogLoading: false, error: apiError.message })
+      throw apiError
+    }
+  },
+
+  loadRetentionRules: async (orgId) => {
+    set({ isRetentionRulesLoading: true, error: null })
+
+    try {
+      const retentionRules = await getRetentionPolicies(orgId)
+      set({ retentionRules, isRetentionRulesLoading: false, error: null })
+    } catch (error) {
+      const apiError = ApiError.fromResponse(error)
+      set({ isRetentionRulesLoading: false, error: apiError.message })
+      throw apiError
+    }
+  },
+
+  updateUserRole: async (orgId, userId, role) => {
+    set({ error: null })
+
+    try {
+      await updateOrgUserRole(orgId, userId, role)
+      set((state) => ({
+        users: state.users.map((user) => (user.id === userId ? { ...user, role } : user)),
+        error: null,
+      }))
+    } catch (error) {
+      const apiError = ApiError.fromResponse(error)
+      set({ error: apiError.message })
+      throw apiError
+    }
+  },
+
+  removeUser: async (orgId, userId) => {
+    set({ error: null })
+
+    try {
+      await deleteOrgUser(orgId, userId)
+      set((state) => ({
+        users: state.users.filter((user) => user.id !== userId),
+        error: null,
+      }))
+    } catch (error) {
+      const apiError = ApiError.fromResponse(error)
+      set({ error: apiError.message })
+      throw apiError
+    }
+  },
+
+  addInvitation: async (orgId, invitation) => {
+    set({ error: null })
+
+    try {
+      await inviteOrgUser(orgId, {
+        email: invitation.email,
+        role: invitation.role,
+      })
+
+      const newInvitation: Invitation = {
+        id: `inv-${Date.now()}`,
+        email: invitation.email,
+        role: invitation.role,
+        status: 'pending',
+        invitedBy: invitation.invitedBy ?? 'You',
+        invitedAt: new Date(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      }
+
+      set((state) => ({
+        invitations: [newInvitation, ...state.invitations],
+        error: null,
+      }))
+    } catch (error) {
+      const apiError = ApiError.fromResponse(error)
+      set({ error: apiError.message })
+      throw apiError
+    }
+  },
+
   cancelInvitation: (invitationId) => {
     set((state) => ({
       invitations: state.invitations.filter((inv) => inv.id !== invitationId),
     }))
   },
-  
+
   resendInvitation: (invitationId) => {
     set((state) => ({
       invitations: state.invitations.map((inv) =>
         inv.id === invitationId
           ? {
               ...inv,
-              invitedAt: new Date().toISOString(),
-              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+              invitedAt: new Date(),
+              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
             }
-          : inv
+          : inv,
       ),
     }))
   },
-  
-  // Custom field actions
-  addCustomField: (field) => {
-    const { currentUser, customFields } = get()
-    const newField: CustomField = {
-      ...field,
-      id: `cf-${Date.now()}`,
-      order: customFields.length,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      createdBy: currentUser?.id || 'unknown',
+
+  addCustomField: async (orgId, field) => {
+    set({ error: null })
+
+    try {
+      const createdField = await createCustomField(orgId, {
+        name: field.name,
+        type: field.type,
+        required: field.required,
+        appliesTo: field.appliesTo,
+        description: field.description,
+        options: field.options,
+        order: field.order,
+      })
+
+      set((state) => ({
+        customFields: [...state.customFields, createdField],
+        error: null,
+      }))
+    } catch (error) {
+      const apiError = ApiError.fromResponse(error)
+      set({ error: apiError.message })
+      throw apiError
     }
-    set((state) => ({
-      customFields: [...state.customFields, newField],
-    }))
   },
-  
-  updateCustomField: (fieldId, updates) => {
-    set((state) => ({
-      customFields: state.customFields.map((field) =>
-        field.id === fieldId
-          ? { ...field, ...updates, updatedAt: new Date().toISOString() }
-          : field
-      ),
-    }))
+
+  updateCustomField: async (orgId, fieldId, updates) => {
+    set({ error: null })
+
+    try {
+      const updatedField = await updateCustomFieldRequest(orgId, fieldId, {
+        name: updates.name,
+        type: updates.type,
+        required: updates.required,
+        appliesTo: updates.appliesTo,
+        description: updates.description,
+        options: updates.options,
+        order: updates.order,
+      })
+
+      set((state) => ({
+        customFields: state.customFields.map((field) => (field.id === fieldId ? updatedField : field)),
+        error: null,
+      }))
+    } catch (error) {
+      const apiError = ApiError.fromResponse(error)
+      set({ error: apiError.message })
+      throw apiError
+    }
   },
-  
-  deleteCustomField: (fieldId) => {
-    set((state) => ({
-      customFields: state.customFields.filter((field) => field.id !== fieldId),
-    }))
+
+  deleteCustomField: async (orgId, fieldId) => {
+    set({ error: null })
+
+    try {
+      await deleteCustomFieldRequest(orgId, fieldId)
+      set((state) => ({
+        customFields: state.customFields.filter((field) => field.id !== fieldId),
+        error: null,
+      }))
+    } catch (error) {
+      const apiError = ApiError.fromResponse(error)
+      set({ error: apiError.message })
+      throw apiError
+    }
   },
-  
+
   reorderCustomFields: (fieldIds) => {
     set((state) => ({
-      customFields: fieldIds.map((id, index) => {
-        const field = state.customFields.find((f) => f.id === id)
-        return field ? { ...field, order: index } : null
-      }).filter(Boolean) as CustomField[],
+      customFields: fieldIds
+        .map((id, index) => {
+          const field = state.customFields.find((item) => item.id === id)
+          return field ? { ...field, order: index } : null
+        })
+        .filter(Boolean) as CustomField[],
     }))
   },
-  
-  // Retention rule actions
-  addRetentionRule: (rule) => {
-    const { currentUser } = get()
-    const newRule: DataRetentionRule = {
-      ...rule,
-      id: `rr-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      createdBy: currentUser?.id || 'unknown',
+
+  addRetentionRule: async (orgId, rule) => {
+    set({ error: null })
+
+    try {
+      const createdRule = await createRetentionPolicy(orgId, {
+        name: rule.name,
+        entityType: rule.entityType,
+        condition: rule.condition,
+        action: rule.action,
+        isActive: rule.isActive,
+      })
+
+      set((state) => ({
+        retentionRules: [...state.retentionRules, createdRule],
+        error: null,
+      }))
+    } catch (error) {
+      const apiError = ApiError.fromResponse(error)
+      set({ error: apiError.message })
+      throw apiError
     }
-    set((state) => ({
-      retentionRules: [...state.retentionRules, newRule],
-    }))
   },
-  
+
   updateRetentionRule: (ruleId, updates) => {
     set((state) => ({
       retentionRules: state.retentionRules.map((rule) =>
-        rule.id === ruleId
-          ? { ...rule, ...updates, updatedAt: new Date().toISOString() }
-          : rule
+        rule.id === ruleId ? { ...rule, ...updates, updatedAt: new Date() } : rule,
       ),
     }))
   },
-  
+
   deleteRetentionRule: (ruleId) => {
     set((state) => ({
       retentionRules: state.retentionRules.filter((rule) => rule.id !== ruleId),
     }))
   },
-  
+
   toggleRetentionRule: (ruleId) => {
     set((state) => ({
       retentionRules: state.retentionRules.map((rule) =>
-        rule.id === ruleId
-          ? { ...rule, isActive: !rule.isActive }
-          : rule
+        rule.id === ruleId ? { ...rule, isActive: !rule.isActive } : rule,
       ),
     }))
   },

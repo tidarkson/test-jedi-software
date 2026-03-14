@@ -86,10 +86,10 @@ interface ExecutionDetailProps {
 export function ExecutionDetail({ className }: ExecutionDetailProps) {
   const {
     getSelectedCase,
-    updateStepStatus,
-    updateStepComment,
-    updateCaseStatus,
-    updateCaseNotes,
+    setStepStatus,
+    setStepComment,
+    setCaseStatus,
+    setCaseNotes,
     navigateToNextCase,
     navigateToPreviousCase,
     timer,
@@ -98,7 +98,9 @@ export function ExecutionDetail({ className }: ExecutionDetailProps) {
     resetTimer,
     tickTimer,
     lastSavedAt,
-    createDefect,
+    isSaving,
+    error,
+    createDefectForCase,
     getFilteredCases,
     selectedCaseId,
   } = useExecutionStore()
@@ -138,6 +140,8 @@ export function ExecutionDetail({ className }: ExecutionDetailProps) {
 
   // Auto-save indicator
   const getLastSavedText = () => {
+    if (error) return 'Save failed'
+    if (isSaving) return 'Saving...'
     if (!lastSavedAt) return 'Not saved'
     const seconds = Math.floor((Date.now() - lastSavedAt.getTime()) / 1000)
     if (seconds < 5) return 'Just saved'
@@ -147,14 +151,48 @@ export function ExecutionDetail({ className }: ExecutionDetailProps) {
 
   const handleCreateDefect = () => {
     if (!selectedCase || !defectForm.title) return
-    createDefect({
-      ...defectForm,
-      executionCaseId: selectedCase.id,
-    })
+    void createDefectForCase(selectedCase.id, defectForm)
     toast.success('Defect created successfully')
     setShowDefectDialog(false)
     setDefectForm({ title: '', severity: 'medium', externalId: '' })
   }
+
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
+        target?.isContentEditable
+      ) {
+        return
+      }
+
+      if (!selectedCase) {
+        return
+      }
+
+      const key = event.key.toLowerCase()
+      if (key === 'p') {
+        event.preventDefault()
+        void setCaseStatus(selectedCase.id, 'passed')
+      }
+
+      if (key === 'f') {
+        event.preventDefault()
+        void setCaseStatus(selectedCase.id, 'failed')
+      }
+
+      if (key === 'n') {
+        event.preventDefault()
+        navigateToNextCase()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [navigateToNextCase, selectedCase, setCaseStatus])
 
   if (!selectedCase) {
     return (
@@ -253,8 +291,8 @@ export function ExecutionDetail({ className }: ExecutionDetailProps) {
                   key={step.stepId}
                   step={step}
                   caseId={selectedCase.id}
-                  onStatusChange={(status) => updateStepStatus(selectedCase.id, step.stepId, status)}
-                  onCommentChange={(comment) => updateStepComment(selectedCase.id, step.stepId, comment)}
+                  onStatusChange={(status) => setStepStatus(selectedCase.id, step.stepId, status)}
+                  onCommentChange={(comment) => setStepComment(selectedCase.id, step.stepId, comment)}
                 />
               ))}
             </div>
@@ -273,7 +311,7 @@ export function ExecutionDetail({ className }: ExecutionDetailProps) {
                     key={status}
                     variant="outline"
                     size="sm"
-                    onClick={() => updateCaseStatus(selectedCase.id, status)}
+                    onClick={() => void setCaseStatus(selectedCase.id, status)}
                     className={cn(
                       'transition-all',
                       isSelected && cn(info.bgColor, info.color, 'border-2', info.borderColor)
@@ -330,7 +368,7 @@ export function ExecutionDetail({ className }: ExecutionDetailProps) {
             <Textarea
               placeholder="Add execution notes..."
               value={selectedCase.notes || ''}
-              onChange={(e) => updateCaseNotes(selectedCase.id, e.target.value)}
+              onChange={(e) => setCaseNotes(selectedCase.id, e.target.value)}
               className="min-h-24"
             />
           </div>

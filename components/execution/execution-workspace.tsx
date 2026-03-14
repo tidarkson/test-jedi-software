@@ -6,22 +6,31 @@ import { useExecutionStore } from '@/lib/store/execution-store'
 import { CaseQueue } from './case-queue'
 import { ExecutionDetail } from './execution-detail'
 import { GripVertical } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface ExecutionWorkspaceProps {
   className?: string
 }
 
 export function ExecutionWorkspace({ className }: ExecutionWorkspaceProps) {
-  const { leftPanelWidth, setLeftPanelWidth, loadExecution, execution } = useExecutionStore()
+  const {
+    leftPanelWidth,
+    setLeftPanelWidth,
+    execution,
+    isLoading,
+    isSaving,
+    error,
+    lastSavedAt,
+  } = useExecutionStore()
   const containerRef = React.useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = React.useState(false)
+  const [, setNow] = React.useState(Date.now())
 
-  // Load execution on mount
+  // Tick for relative save-time text
   React.useEffect(() => {
-    if (!execution) {
-      loadExecution('tr-exec-001')
-    }
-  }, [execution, loadExecution])
+    const interval = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Handle resize
   const handleMouseDown = React.useCallback((e: React.MouseEvent) => {
@@ -64,18 +73,53 @@ export function ExecutionWorkspace({ className }: ExecutionWorkspaceProps) {
     }
   }, [isDragging, handleMouseMove, handleMouseUp])
 
+  const saveText = React.useMemo(() => {
+    if (error) {
+      return 'Save failed'
+    }
+
+    if (isSaving) {
+      return 'Saving...'
+    }
+
+    if (!lastSavedAt) {
+      return 'Not saved yet'
+    }
+
+    const seconds = Math.max(0, Math.floor((Date.now() - lastSavedAt.getTime()) / 1000))
+    if (seconds < 60) {
+      return `Saved ${seconds} seconds ago`
+    }
+
+    return `Saved ${Math.floor(seconds / 60)} minutes ago`
+  }, [error, isSaving, lastSavedAt])
+
+  if (isLoading) {
+    return (
+      <div className={cn('space-y-4 p-4', className)}>
+        <Skeleton className="h-6 w-40" />
+        <div className="grid h-full grid-cols-2 gap-4">
+          <Skeleton className="h-full min-h-[360px]" />
+          <Skeleton className="h-full min-h-[360px]" />
+        </div>
+      </div>
+    )
+  }
+
   if (!execution) {
     return (
       <div className={cn('flex h-full items-center justify-center', className)}>
         <div className="text-center text-muted-foreground">
-          Loading execution...
+          No execution loaded.
         </div>
       </div>
     )
   }
 
   return (
-    <div ref={containerRef} className={cn('flex h-full', className)}>
+    <div className={cn('flex h-full flex-col', className)}>
+      <div className="border-b px-4 py-2 text-sm text-muted-foreground">{saveText}</div>
+      <div ref={containerRef} className="flex h-full">
       {/* Left Panel - Case Queue */}
       <div
         className="flex h-full overflow-hidden border-r bg-background"
@@ -108,6 +152,7 @@ export function ExecutionWorkspace({ className }: ExecutionWorkspaceProps) {
         style={{ width: `${100 - leftPanelWidth}%` }}
       >
         <ExecutionDetail className="h-full flex-1" />
+      </div>
       </div>
     </div>
   )

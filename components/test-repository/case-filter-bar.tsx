@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTestRepositoryStore, type FilterState } from '@/lib/store/test-repository-store'
-import { filterOptions } from '@/lib/data/mock-test-data'
+import { testRepositoryFilterOptions } from '@/lib/constants/test-repository-filters'
 
 interface FilterDropdownProps {
   label: string
@@ -112,7 +112,7 @@ function FilterDropdown({ label, options, selected, onSelectionChange }: FilterD
 export function CaseFilterBar() {
   const { filters, setFilter, clearFilters, getFilteredCases } = useTestRepositoryStore()
   const [searchValue, setSearchValue] = React.useState(filters.search)
-  const debounceRef = React.useRef<ReturnType<typeof setTimeout>>()
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Debounced search
   React.useEffect(() => {
@@ -144,27 +144,27 @@ export function CaseFilterBar() {
   const activeChips: { key: keyof FilterState; value: string; label: string }[] = []
   
   filters.priorities.forEach(v => {
-    const opt = filterOptions.priorities.find(o => o.value === v)
+    const opt = testRepositoryFilterOptions.priorities.find(o => o.value === v)
     if (opt) activeChips.push({ key: 'priorities', value: v, label: `Priority: ${opt.label}` })
   })
   filters.severities.forEach(v => {
-    const opt = filterOptions.severities.find(o => o.value === v)
+    const opt = testRepositoryFilterOptions.severities.find(o => o.value === v)
     if (opt) activeChips.push({ key: 'severities', value: v, label: `Severity: ${opt.label}` })
   })
   filters.types.forEach(v => {
-    const opt = filterOptions.types.find(o => o.value === v)
+    const opt = testRepositoryFilterOptions.types.find(o => o.value === v)
     if (opt) activeChips.push({ key: 'types', value: v, label: `Type: ${opt.label}` })
   })
   filters.automationStatuses.forEach(v => {
-    const opt = filterOptions.automationStatuses.find(o => o.value === v)
+    const opt = testRepositoryFilterOptions.automationStatuses.find(o => o.value === v)
     if (opt) activeChips.push({ key: 'automationStatuses', value: v, label: opt.label })
   })
   filters.statuses.forEach(v => {
-    const opt = filterOptions.statuses.find(o => o.value === v)
+    const opt = testRepositoryFilterOptions.statuses.find(o => o.value === v)
     if (opt) activeChips.push({ key: 'statuses', value: v, label: `Status: ${opt.label}` })
   })
   filters.tags.forEach(v => {
-    const opt = filterOptions.tags.find(o => o.value === v)
+    const opt = testRepositoryFilterOptions.tags.find(o => o.value === v)
     if (opt) activeChips.push({ key: 'tags', value: v, label: `Tag: ${opt.label}` })
   })
 
@@ -199,37 +199,37 @@ export function CaseFilterBar() {
         {/* Filter dropdowns */}
         <FilterDropdown
           label="Priority"
-          options={filterOptions.priorities}
+          options={testRepositoryFilterOptions.priorities}
           selected={filters.priorities}
           onSelectionChange={(values) => setFilter('priorities', values)}
         />
         <FilterDropdown
           label="Severity"
-          options={filterOptions.severities}
+          options={testRepositoryFilterOptions.severities}
           selected={filters.severities}
           onSelectionChange={(values) => setFilter('severities', values)}
         />
         <FilterDropdown
           label="Type"
-          options={filterOptions.types}
+          options={testRepositoryFilterOptions.types}
           selected={filters.types}
           onSelectionChange={(values) => setFilter('types', values)}
         />
         <FilterDropdown
           label="Automation"
-          options={filterOptions.automationStatuses}
+          options={testRepositoryFilterOptions.automationStatuses}
           selected={filters.automationStatuses}
           onSelectionChange={(values) => setFilter('automationStatuses', values)}
         />
         <FilterDropdown
           label="Status"
-          options={filterOptions.statuses}
+          options={testRepositoryFilterOptions.statuses}
           selected={filters.statuses}
           onSelectionChange={(values) => setFilter('statuses', values)}
         />
         <FilterDropdown
           label="Tags"
-          options={filterOptions.tags}
+          options={testRepositoryFilterOptions.tags}
           selected={filters.tags}
           onSelectionChange={(values) => setFilter('tags', values)}
         />

@@ -88,21 +88,27 @@ const testCaseFormSchema = z.object({
   severity: z.enum(['critical', 'major', 'minor', 'trivial']),
   type: z.enum(['functional', 'regression', 'smoke', 'integration', 'e2e', 'performance', 'security', 'usability']),
   riskLevel: z.enum(['high', 'medium', 'low']),
-  automationStatus: z.enum(['manual', 'automated', 'to-automate']),
+  automationStatus: z.enum(['manual', 'automated', 'partially-automated', 'to-automate']),
   estimatedTime: z.number().min(0).optional(),
   tags: z.array(z.string()),
-  suiteId: z.string().optional(),
+  suiteId: z.string().min(1, 'Suite is required'),
   steps: z.array(testStepSchema).min(1, 'At least one step is required'),
   attachments: z.array(attachmentSchema).optional(),
 })
 
-type TestCaseFormData = z.infer<typeof testCaseFormSchema>
+export type TestCaseFormData = z.infer<typeof testCaseFormSchema>
+
+interface SuiteOption {
+  id: string
+  name: string
+}
 
 interface TestCaseFormProps {
   initialData?: Partial<TestCaseFormData>
-  onSubmit: (data: TestCaseFormData) => void
+  onSubmit: (data: TestCaseFormData) => void | Promise<void>
   onCancel: () => void
   mode?: 'create' | 'edit'
+  suiteOptions?: SuiteOption[]
 }
 
 // Sortable Step Component
@@ -427,6 +433,7 @@ export function TestCaseForm({
   onSubmit,
   onCancel,
   mode = 'create',
+  suiteOptions = [],
 }: TestCaseFormProps) {
   const [showUnsavedWarning, setShowUnsavedWarning] = React.useState(false)
   const [pendingNavigation, setPendingNavigation] = React.useState<(() => void) | null>(null)
@@ -444,7 +451,7 @@ export function TestCaseForm({
     automationStatus: 'manual',
     estimatedTime: undefined,
     tags: [],
-    suiteId: undefined,
+    suiteId: '',
     steps: [{ id: crypto.randomUUID(), action: '', expectedResult: '', testData: '' }],
     attachments: [],
     ...initialData,
@@ -489,9 +496,8 @@ export function TestCaseForm({
   }
 
   // Handle form submission
-  const onFormSubmit = handleSubmit((data) => {
-    onSubmit(data)
-    toast.success(mode === 'create' ? 'Test case created successfully' : 'Test case updated successfully')
+  const onFormSubmit = handleSubmit(async (data) => {
+    await onSubmit(data)
   })
 
   // Handle cancel with unsaved changes check
@@ -596,6 +602,29 @@ export function TestCaseForm({
             <CardTitle className="text-base">Basic Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Title */}
+            <div>
+              <Label>Suite <span className="text-destructive">*</span></Label>
+              <Select
+                value={watch('suiteId')}
+                onValueChange={(val) => setValue('suiteId', val, { shouldDirty: true, shouldValidate: true })}
+              >
+                <SelectTrigger className={cn('mt-1', errors.suiteId && 'border-destructive')}>
+                  <SelectValue placeholder="Select a suite" />
+                </SelectTrigger>
+                <SelectContent>
+                  {suiteOptions.map((suite) => (
+                    <SelectItem key={suite.id} value={suite.id}>
+                      {suite.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.suiteId && (
+                <p className="mt-1 text-xs text-destructive">{errors.suiteId.message}</p>
+              )}
+            </div>
+
             {/* Title */}
             <div>
               <Label htmlFor="title">
@@ -740,6 +769,7 @@ export function TestCaseForm({
                   <SelectContent>
                     <SelectItem value="manual">Manual</SelectItem>
                     <SelectItem value="automated">Automated</SelectItem>
+                    <SelectItem value="partially-automated">Partially Automated</SelectItem>
                     <SelectItem value="to-automate">To Be Automated</SelectItem>
                   </SelectContent>
                 </Select>

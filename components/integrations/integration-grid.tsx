@@ -9,6 +9,7 @@ import type { Integration, IntegrationType } from '@/types/integrations'
 
 interface IntegrationGridProps {
   integrations: Integration[]
+  isLoading?: boolean
   onConnect: (type: IntegrationType) => void
   onConfigure: (type: IntegrationType) => void
 }
@@ -27,7 +28,20 @@ const statusLabels: Record<string, string> = {
   pending: 'Pending',
 }
 
-export function IntegrationGrid({ integrations, onConnect, onConfigure }: IntegrationGridProps) {
+export function IntegrationGrid({
+  integrations,
+  isLoading = false,
+  onConnect,
+  onConfigure,
+}: IntegrationGridProps) {
+  if (isLoading) {
+    return <div className="text-sm text-muted-foreground">Loading integrations...</div>
+  }
+
+  if (integrations.length === 0) {
+    return <div className="text-sm text-muted-foreground">No integrations found for this project.</div>
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       {integrations.map((integration) => (

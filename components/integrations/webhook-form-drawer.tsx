@@ -46,7 +46,9 @@ const webhookEvents: WebhookEvent[] = [
 interface WebhookFormDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSave: (webhook: Omit<Webhook, 'id' | 'createdAt' | 'updatedAt' | 'deliveries'>) => void
+  onSave: (
+    webhook: Omit<Webhook, 'id' | 'createdAt' | 'updatedAt' | 'deliveries'>
+  ) => Promise<void>
   webhook?: Webhook
 }
 
@@ -74,25 +76,36 @@ export function WebhookFormDrawer({
     },
   })
 
-  const onSubmit = (data: WebhookFormData) => {
+  React.useEffect(() => {
+    setSelectedEvents(webhook?.events || [])
+    form.reset({
+      url: webhook?.url || '',
+      secret: webhook?.secret || '',
+    })
+  }, [webhook, form, open])
+
+  const onSubmit = async (data: WebhookFormData) => {
     if (selectedEvents.length === 0) {
       toast.error('Please select at least one event type')
       return
     }
 
     setIsLoading(true)
-    setTimeout(() => {
-      onSave({
+    try {
+      await onSave({
         url: data.url,
         secret: data.secret,
         events: selectedEvents,
         active: webhook?.active ?? true,
         failureCount: webhook?.failureCount ?? 0,
       })
-      setIsLoading(false)
+
       onOpenChange(false)
       toast.success(`Webhook ${isEditing ? 'updated' : 'created'} successfully`)
-    }, 1000)
+    } catch {
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleEventToggle = (event: WebhookEvent) => {

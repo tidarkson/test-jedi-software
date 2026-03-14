@@ -17,12 +17,15 @@ import {
   Plus,
 } from 'lucide-react'
 import type { AuditLogEntry, AuditAction, AuditEntityType } from '@/types/admin'
-import { formatRelativeTime } from '@/lib/data/mock-admin-data'
+import { exportAuditLogsCsv } from '@/lib/api/admin'
+import { useAdminStore } from '@/lib/store/admin-store'
+import { useAuthStore } from '@/lib/store/auth-store'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Spinner } from '@/components/ui/spinner'
 import {
   Table,
   TableBody,
@@ -92,7 +95,7 @@ const entityTypeLabels: Record<AuditEntityType, string> = {
 }
 
 interface AuditLogTableProps {
-  entries: AuditLogEntry[]
+  entries?: AuditLogEntry[]
 }
 
 interface DiffViewerProps {
@@ -145,66 +148,107 @@ function DiffViewer({ before, after }: DiffViewerProps) {
 }
 
 export function AuditLogTable({ entries = [] }: AuditLogTableProps) {
+  const user = useAuthStore((state) => state.user)
+  const { auditLog, loadAuditLog, isAuditLogLoading, error } = useAdminStore()
+
   const [selectedEntry, setSelectedEntry] = React.useState<AuditLogEntry | null>(null)
   const [filters, setFilters] = React.useState({
-    user: '',
+    userId: '',
     entityType: '',
     action: '',
     dateFrom: '',
     dateTo: '',
   })
   const [isFilterOpen, setIsFilterOpen] = React.useState(false)
+  const [isExporting, setIsExporting] = React.useState(false)
 
-  const filteredEntries = React.useMemo(() => {
-    return (entries ?? []).filter((entry) => {
-      if (filters.user && !entry.userName.toLowerCase().includes(filters.user.toLowerCase())) {
-        return false
-      }
-      if (filters.entityType && entry.entityType !== filters.entityType) {
-        return false
-      }
-      if (filters.action && entry.action !== filters.action) {
-        return false
-      }
-      if (filters.dateFrom) {
-        const fromDate = new Date(filters.dateFrom)
-        if (entry.timestamp < fromDate) return false
-      }
-      if (filters.dateTo) {
-        const toDate = new Date(filters.dateTo)
-        toDate.setHours(23, 59, 59)
-        if (entry.timestamp > toDate) return false
-      }
-      return true
+  const orgId = user?.organizationId || ''
+
+  const tableEntries = React.useMemo(() => {
+    return entries.length > 0 ? entries : auditLog
+  }, [auditLog, entries])
+
+  const fetchAuditLog = React.useCallback(async () => {
+    if (!orgId) {
+      return
+    }
+
+    await loadAuditLog(orgId, {
+      userId: filters.userId || undefined,
+      entityType: (filters.entityType as AuditEntityType) || undefined,
+      action: (filters.action as AuditAction) || undefined,
+      dateFrom: filters.dateFrom || undefined,
+      dateTo: filters.dateTo || undefined,
     })
-  }, [entries, filters])
+  }, [filters.action, filters.dateFrom, filters.dateTo, filters.entityType, filters.userId, loadAuditLog, orgId])
 
-  const handleExportCSV = () => {
-    const headers = ['Timestamp', 'User', 'Email', 'Action', 'Entity Type', 'Entity ID', 'Entity Name']
-    const rows = filteredEntries.map((entry) => [
-      entry.timestamp.toISOString(),
-      entry.userName,
-      entry.userEmail,
-      entry.action,
-      entry.entityType,
-      entry.entityId,
-      entry.entityName || '',
-    ])
+  React.useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void fetchAuditLog().catch((apiError) => {
+        toast.error(apiError.message ?? 'Failed to load audit log')
+      })
+    }, 300)
 
-    const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `audit-log-${new Date().toISOString().split('T')[0]}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-    toast.success('Audit log exported')
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [fetchAuditLog])
+
+  const formatRelativeTime = (date: Date) => {
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / (1000 * 60))
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+    if (diffMins < 1) return 'Just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays < 7) return `${diffDays}d ago`
+
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const handleExportCSV = async () => {
+    if (!orgId) {
+      toast.error('Missing organization context')
+      return
+    }
+
+    try {
+      setIsExporting(true)
+      const csvBlob = await exportAuditLogsCsv(orgId, {
+        userId: filters.userId || undefined,
+        entityType: (filters.entityType as AuditEntityType) || undefined,
+        action: (filters.action as AuditAction) || undefined,
+        dateFrom: filters.dateFrom || undefined,
+        dateTo: filters.dateTo || undefined,
+      })
+
+      const url = URL.createObjectURL(csvBlob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `audit-log-${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      URL.revokeObjectURL(url)
+
+      toast.success('Audit log exported')
+    } catch (apiError) {
+      const message = apiError instanceof Error ? apiError.message : 'Failed to export CSV'
+      toast.error(message)
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const clearFilters = () => {
     setFilters({
-      user: '',
+      userId: '',
       entityType: '',
       action: '',
       dateFrom: '',
@@ -238,12 +282,12 @@ export function AuditLogTable({ entries = [] }: AuditLogTableProps) {
                   </div>
                   <div className="grid gap-3">
                     <div className="grid gap-1.5">
-                      <Label htmlFor="filter-user">User</Label>
+                      <Label htmlFor="filter-user">User ID</Label>
                       <Input
                         id="filter-user"
-                        placeholder="Search by name..."
-                        value={filters.user}
-                        onChange={(e) => setFilters({ ...filters, user: e.target.value })}
+                        placeholder="Filter by user ID..."
+                        value={filters.userId}
+                        onChange={(e) => setFilters({ ...filters, userId: e.target.value })}
                       />
                     </div>
                     <div className="grid gap-1.5">
@@ -312,12 +356,12 @@ export function AuditLogTable({ entries = [] }: AuditLogTableProps) {
               </PopoverContent>
             </Popover>
             <span className="text-sm text-muted-foreground">
-              {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
+              {tableEntries.length} {tableEntries.length === 1 ? 'entry' : 'entries'}
             </span>
           </div>
-          <Button variant="outline" onClick={handleExportCSV}>
-            <Download className="mr-2 h-4 w-4" />
-            Export CSV
+          <Button variant="outline" onClick={() => void handleExportCSV()} disabled={isExporting}>
+            {isExporting ? <Spinner className="mr-2 h-4 w-4" /> : <Download className="mr-2 h-4 w-4" />}
+            {isExporting ? 'Exporting...' : 'Export CSV'}
           </Button>
         </div>
 
@@ -334,14 +378,23 @@ export function AuditLogTable({ entries = [] }: AuditLogTableProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredEntries.length === 0 ? (
+              {isAuditLogLoading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center">
+                    <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                      <Spinner className="h-4 w-4" />
+                      Loading audit log...
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : tableEntries.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                     No audit log entries found
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredEntries.map((entry) => {
+                tableEntries.map((entry) => {
                   const ActionIcon = actionIcons[entry.action]
                   return (
                     <TableRow
@@ -382,6 +435,7 @@ export function AuditLogTable({ entries = [] }: AuditLogTableProps) {
             </TableBody>
           </Table>
         </div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
       </div>
 
       {/* Detail Drawer */}

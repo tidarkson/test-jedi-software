@@ -16,6 +16,8 @@ import {
 import { Plug, Webhook, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { useIntegrationStore } from '@/lib/store/integration-store'
+import { useProjectStore } from '@/lib/store/project-store'
+import type { AutomationImportResponse } from '@/lib/api/integrations'
 import type { IntegrationType, Webhook as WebhookType } from '@/types/integrations'
 
 export function IntegrationsSettings() {
@@ -23,12 +25,17 @@ export function IntegrationsSettings() {
     integrations,
     webhooks,
     importRecords,
+    isLoading,
+    loadIntegrations,
+    loadWebhooks,
     connectIntegration,
     disconnectIntegration,
     updateIntegration,
     addWebhook,
+    updateWebhook,
     deleteWebhook,
   } = useIntegrationStore()
+  const currentProjectId = useProjectStore((state) => state.currentProjectId)
 
   // Config dialogs
   const [configDialogOpen, setConfigDialogOpen] = React.useState(false)
@@ -45,6 +52,15 @@ export function IntegrationsSettings() {
   // Import dialog
   const [importDialogOpen, setImportDialogOpen] = React.useState(false)
 
+  React.useEffect(() => {
+    if (!currentProjectId) {
+      return
+    }
+
+    void loadIntegrations(currentProjectId)
+    void loadWebhooks(currentProjectId)
+  }, [currentProjectId, loadIntegrations, loadWebhooks])
+
   const handleConnectIntegration = (type: IntegrationType) => {
     setConfigDialogType(type)
     setConfigDialogMode('connect')
@@ -57,12 +73,19 @@ export function IntegrationsSettings() {
     setConfigDialogOpen(true)
   }
 
-  const handleIntegrationConnect = (config: any) => {
+  const handleIntegrationConnect = async (config: any) => {
     if (!configDialogType) return
 
-    connectIntegration(configDialogType, config)
-    setConfigDialogOpen(false)
-    toast.success(`${configDialogType} connected successfully`)
+    try {
+      await connectIntegration(configDialogType, config, currentProjectId ?? undefined)
+      if (configDialogType !== 'jira') {
+        setConfigDialogOpen(false)
+        toast.success(`${configDialogType} connected successfully`)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to connect integration'
+      toast.error(message)
+    }
   }
 
   const handleAddWebhook = () => {
@@ -75,20 +98,30 @@ export function IntegrationsSettings() {
     setWebhookFormOpen(true)
   }
 
-  const handleSaveWebhook = (webhookData: any) => {
-    if (selectedWebhook) {
-      // Update existing webhook
-      toast.success('Webhook updated')
-    } else {
-      // Create new webhook
-      addWebhook(webhookData)
-      toast.success('Webhook created')
+  const handleSaveWebhook = async (webhookData: any) => {
+    try {
+      if (selectedWebhook) {
+        await updateWebhook(selectedWebhook.id, webhookData, currentProjectId ?? undefined)
+        toast.success('Webhook updated')
+      } else {
+        await addWebhook(webhookData, currentProjectId ?? undefined)
+        toast.success('Webhook created')
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save webhook'
+      toast.error(message)
+      throw error
     }
   }
 
-  const handleDeleteWebhook = (webhookId: string) => {
-    deleteWebhook(webhookId)
-    toast.success('Webhook deleted')
+  const handleDeleteWebhook = async (webhookId: string) => {
+    try {
+      await deleteWebhook(webhookId, currentProjectId ?? undefined)
+      toast.success('Webhook deleted')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete webhook'
+      toast.error(message)
+    }
   }
 
   const handleViewWebhookLogs = (webhook: WebhookType) => {
@@ -96,10 +129,23 @@ export function IntegrationsSettings() {
     setWebhookLogsOpen(true)
   }
 
-  const handleImportSuccess = async (data: { runId: string; cases: any[] }) => {
-    // Simulate import
-    await new Promise((resolve) => setTimeout(resolve, 2000))
+  const handleImportSuccess = async (data: {
+    runId: string
+    runName?: string
+    payload: unknown[]
+    fileName: string
+  }): Promise<AutomationImportResponse> => {
+    const { importAutomationRunResults } = useIntegrationStore.getState()
+    const result = await importAutomationRunResults({
+      projectId: currentProjectId ?? undefined,
+      runId: data.runId,
+      runName: data.runName,
+      fileName: data.fileName,
+      payload: data.payload,
+    })
+
     toast.success('Test results imported successfully')
+    return result
   }
 
   return (
@@ -135,6 +181,7 @@ export function IntegrationsSettings() {
             <CardContent>
               <IntegrationGrid
                 integrations={integrations}
+                isLoading={isLoading}
                 onConnect={handleConnectIntegration}
                 onConfigure={handleConfigureIntegration}
               />
@@ -157,6 +204,7 @@ export function IntegrationsSettings() {
             <CardContent>
               <WebhookTable
                 webhooks={webhooks}
+                isLoading={isLoading}
                 onAdd={handleAddWebhook}
                 onEdit={handleEditWebhook}
                 onDelete={handleDeleteWebhook}
