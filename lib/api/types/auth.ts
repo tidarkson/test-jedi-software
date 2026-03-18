@@ -18,6 +18,7 @@ export interface UserProfile {
   name: string
   role: UserRole
   organizationId?: string
+  avatar?: string
 }
 
 export interface AuthResponse {
@@ -33,6 +34,8 @@ export interface RawUserProfile {
   role?: string
   roles?: string[]
   organizationId?: string
+  avatar?: string
+  avatarUrl?: string
 }
 
 export interface RawAuthResponse {

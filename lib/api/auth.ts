@@ -34,7 +34,7 @@ function normalizeUserRole(role: string): UserRole {
   }
 }
 
-function normalizeUserProfile(user: RawUserProfile): UserProfile {
+export function normalizeUserProfile(user: RawUserProfile): UserProfile {
   const rawRole = user.role ?? user.roles?.[0] ?? 'viewer'
 
   return {
@@ -43,6 +43,7 @@ function normalizeUserProfile(user: RawUserProfile): UserProfile {
     name: user.name,
     organizationId: user.organizationId,
     role: normalizeUserRole(rawRole),
+    avatar: user.avatar ?? user.avatarUrl,
   }
 }
 

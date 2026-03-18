@@ -47,6 +47,7 @@ import {
   importRepository,
   type GetCasesFilters,
 } from '@/lib/api/repository'
+import { parseCsvToRepositoryPayload } from '@/lib/utils/repository-import-csv'
 import type { TestCaseFormData } from '@/components/test-repository/test-case-form'
 import { ApiError } from '@/lib/api/errors'
 
@@ -263,87 +264,38 @@ export default function TestRepositoryPage() {
   }
 
   const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
+    const file = event.target.files?.[0]
+    event.target.value = ''
 
     if (!file || !currentProjectId) {
-      return;
+      return
     }
 
-    setIsImporting(true);
+    setIsImporting(true)
     try {
-      let repository;
+      let repository
       if (file.name.endsWith('.csv')) {
-        // Dynamically import papaparse for CSV parsing
-        const Papa = (await import('papaparse')).default;
-        const text = await file.text();
-        const parsed = Papa.parse(text, { header: true });
-        // Convert CSV rows to test case objects
-        // Allowed enums
-        const allowedPriority = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
-        const allowedSeverity = ['BLOCKER', 'CRITICAL', 'MAJOR', 'MINOR', 'TRIVIAL'];
-        const allowedType = ['FUNCTIONAL', 'REGRESSION', 'SMOKE', 'INTEGRATION', 'E2E', 'PERFORMANCE', 'SECURITY', 'USABILITY'];
-        const allowedAutomation = ['MANUAL', 'AUTOMATED', 'PARTIALLY_AUTOMATED', 'PENDING_AUTOMATION'];
-
-        const cases = parsed.data
-          .filter((row) => row['Title'] && String(row['Title']).trim().length > 0)
-          .map((row, idx) => {
-            // Map and validate enums
-            const priority = allowedPriority.includes((row['Priority'] || '').toUpperCase()) ? row['Priority'].toUpperCase() : 'MEDIUM';
-            const severity = allowedSeverity.includes((row['Severity'] || '').toUpperCase()) ? row['Severity'].toUpperCase() : 'MAJOR';
-            const type = allowedType.includes((row['Type'] || '').toUpperCase()) ? row['Type'].toUpperCase() : 'FUNCTIONAL';
-            const automationStatus = allowedAutomation.includes((row['Automation Status'] || '').toUpperCase()) ? row['Automation Status'].toUpperCase() : 'MANUAL';
-            return {
-              title: String(row['Title']).trim(),
-              description: row['Description'],
-              priority,
-              severity,
-              type,
-              automationStatus,
-              status: 'ACTIVE',
-              tags: row['Tags'] ? row['Tags'].split(',') : [],
-              steps: row['Steps']
-                ? row['Steps'].split('\n').map((step, idx) => ({
-                    index: idx + 1,
-                    action: step,
-                    expectedResult: row['Expected Result'] || '',
-                  }))
-                : [],
-            };
-          });
-        // Compose a minimal valid repository object
-        repository = {
-          version: 1,
-          exportedAt: new Date().toISOString(),
+        const text = await file.text()
+        repository = parseCsvToRepositoryPayload(text, {
           projectId: currentProjectId,
-          projectName: projects.find((p) => p.id === currentProjectId)?.name || '',
-          rootSuites: [
-            {
-              name: 'Imported Suite',
-              description: 'Imported from CSV',
-              status: 'ACTIVE',
-              isLocked: false,
-              cases,
-              childSuites: [],
-            },
-          ],
-        };
+          projectName: projects.find((project) => project.id === currentProjectId)?.name || '',
+        })
       } else {
-        const text = await file.text();
-        repository = JSON.parse(text);
+        const text = await file.text()
+        repository = JSON.parse(text)
       }
       const result = await importRepository(currentProjectId, {
         parentSuiteId: selectedSuiteId ?? undefined,
         repository,
-      });
-      await refreshRepositoryData();
-      toast.success(`Imported ${result.suitesCreated} suites and ${result.casesCreated} test cases`);
+      })
+      await refreshRepositoryData()
+      toast.success(`Imported ${result.suitesCreated} suites and ${result.casesCreated} test cases`)
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to import repository file');
+      toast.error(err instanceof Error ? err.message : 'Failed to import repository file')
     } finally {
-      setIsImporting(false);
+      setIsImporting(false)
     }
-  };
+  }
 
   // Build breadcrumbs
   const breadcrumbs = [
