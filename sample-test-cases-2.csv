@@ -1,0 +1,5 @@
+Title,Description,Priority,Severity,Type,Automation Status,Steps,Expected Result,Tags
+Add Item to Cart,Verify adding item to cart,High,Critical,Functional,Automated,"1. Go to product page\n2. Click 'Add to Cart' button","Item appears in cart",cart,shopping
+Remove Item from Cart,Verify removing item from cart,Medium,Major,Functional,Manual,"1. Add item to cart\n2. Go to cart\n3. Click 'Remove' button","Item is removed from cart",cart,shopping
+Checkout Process,Verify checkout with valid payment,High,Critical,Functional,Automated,"1. Add item to cart\n2. Go to checkout\n3. Enter valid payment details\n4. Submit order","Order is placed successfully",checkout,payment
+Search Product,Verify product search,Low,Minor,Functional,Manual,"1. Enter product name in search bar\n2. Click search","Relevant products are displayed",search,product

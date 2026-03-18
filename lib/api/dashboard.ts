@@ -1,9 +1,14 @@
+import apiClient from './client'
 import { getAnalyticsTrends } from './analytics'
 import { getPlans } from './plans'
 import { getProjectDefectCount, getProjectRunCount } from './projects'
+import { getSuites } from './repository'
 import { getRuns } from './runs'
+import type { ApiSuccessResponse } from './types/common'
 import type { PlanDto } from './types/plans'
+import type { TestCaseDto } from './types/repository'
 import type { RunDto } from './types/runs'
+import type { TestSuiteNode } from '@/lib/store/test-repository-store'
 
 export interface DashboardSummary {
   activeRunsCount: number
@@ -12,6 +17,21 @@ export interface DashboardSummary {
   openDefectsCount: number
   totalCases: number
   plansCount: number
+  repositoryCasesCount: number
+  repositorySuitesCount: number
+}
+
+interface RepositoryPagination {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+  hasMore: boolean
+  nextCursor?: string
+}
+
+interface PaginatedApiSuccessResponse<T> extends ApiSuccessResponse<T> {
+  pagination: RepositoryPagination
 }
 
 function formatDate(date: Date): string {
@@ -36,10 +56,34 @@ function countOpenPlans(plans: PlanDto[]): number {
   }).length
 }
 
+function flattenSuites(suites: TestSuiteNode[]): TestSuiteNode[] {
+  return suites.reduce<TestSuiteNode[]>((accumulator, suite) => {
+    accumulator.push(suite)
+    if (suite.children.length > 0) {
+      accumulator.push(...flattenSuites(suite.children))
+    }
+    return accumulator
+  }, [])
+}
+
+async function getRepositoryCaseCount(projectId: string): Promise<number> {
+  const response = await apiClient.get<PaginatedApiSuccessResponse<TestCaseDto[]>>(
+    `/projects/${projectId}/cases`,
+    {
+      params: {
+        page: 1,
+        limit: 1,
+      },
+    }
+  )
+
+  return response.data.pagination?.total ?? 0
+}
+
 export async function getDashboardSummary(projectId: string): Promise<DashboardSummary> {
   const { dateFrom, dateTo } = getLastSevenDayRange()
 
-  const [activeRunsCount, recentRuns, trendPoints, plans, openDefectsCount] = await Promise.all([
+  const [activeRunsCount, recentRuns, trendPoints, plans, openDefectsCount, suites, repositoryCasesCount] = await Promise.all([
     getProjectRunCount(projectId),
     getRuns(projectId, {
       page: 1,
@@ -49,6 +93,8 @@ export async function getDashboardSummary(projectId: string): Promise<DashboardS
     getAnalyticsTrends(projectId, { dateFrom, dateTo }),
     getPlans(projectId),
     getProjectDefectCount(projectId).catch(() => 0),
+    getSuites(projectId),
+    getRepositoryCaseCount(projectId),
   ])
 
   const totals = trendPoints.reduce(
@@ -70,5 +116,7 @@ export async function getDashboardSummary(projectId: string): Promise<DashboardS
     openDefectsCount,
     totalCases: totals.total,
     plansCount: countOpenPlans(plans),
+    repositoryCasesCount,
+    repositorySuitesCount: flattenSuites(suites).length,
   }
 }

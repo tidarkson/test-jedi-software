@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   ClipboardList,
   Clock,
+  Files,
+  FolderTree,
   FolderKanban,
   PlayCircle,
   Plus,
@@ -65,8 +67,8 @@ const EMPTY_RUN_METRICS: RunMetricsResponse = {
 
 function SummarySkeletons() {
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      {Array.from({ length: 4 }).map((_, index) => (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      {Array.from({ length: 6 }).map((_, index) => (
         <Card key={index}>
           <CardHeader className="space-y-2 pb-2">
             <Skeleton className="h-4 w-24" />
@@ -269,7 +271,7 @@ export default function DashboardPage() {
         {isLoading && !summary ? (
           <SummarySkeletons />
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Active Runs</CardTitle>
@@ -311,6 +313,28 @@ export default function DashboardPage() {
               <CardContent>
                 <div className="text-2xl font-bold">{summary?.plansCount ?? 0}</div>
                 <p className="mt-1 text-xs text-muted-foreground">Non-archived test plans</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Repository Cases</CardTitle>
+                <Files className="h-4 w-4 text-indigo-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{summary?.repositoryCasesCount ?? 0}</div>
+                <p className="mt-1 text-xs text-muted-foreground">Total cases in repository</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Repository Suites</CardTitle>
+                <FolderTree className="h-4 w-4 text-cyan-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{summary?.repositorySuitesCount ?? 0}</div>
+                <p className="mt-1 text-xs text-muted-foreground">Total suites in repository</p>
               </CardContent>
             </Card>
           </div>
