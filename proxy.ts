@@ -8,7 +8,7 @@ function matchesRoute(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(`${route}/`)
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const accessToken = request.cookies.get('tj_access_token')?.value
   const isAuthenticated = Boolean(accessToken)

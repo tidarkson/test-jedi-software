@@ -17,7 +17,8 @@ const cspDirectives = [
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
-  `script-src 'self'${isDevelopment ? " 'unsafe-eval' 'unsafe-inline'" : ''}`,
+  // Next.js injects small inline runtime/bootstrap scripts that must be permitted.
+  `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ''}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
