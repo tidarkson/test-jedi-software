@@ -22,6 +22,10 @@ function toProject(dto: ProjectDto): Project {
     description: dto.description ?? undefined,
     color: dto.color ?? settings.color ?? undefined,
     icon: dto.icon ?? settings.icon ?? undefined,
+    memberCount: dto.memberCount ?? 0,
+    testCaseCount: dto.testCaseCount ?? 0,
+    activeRunsCount: dto.activeRunsCount ?? 0,
+    lastRunDate: dto.lastRunDate ? new Date(dto.lastRunDate) : null,
   }
 }
 

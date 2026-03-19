@@ -12,6 +12,12 @@ export interface ProjectDto {
   color?: string | null
   icon?: string | null
   settings?: ProjectSettingsDto | null
+  memberCount?: number
+  testCaseCount?: number
+  activeRunsCount?: number
+  lastRunDate?: string | null
+  createdAt?: string | null
+  updatedAt?: string | null
 }
 
 export interface CreateProjectRequestDto {
@@ -26,4 +32,8 @@ export interface Project {
   description?: string
   color?: string
   icon?: string
+  memberCount?: number
+  testCaseCount?: number
+  activeRunsCount?: number
+  lastRunDate?: Date | null
 }

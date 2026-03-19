@@ -99,11 +99,16 @@ function parseDate(value: unknown): Date {
 }
 
 function normalizeRole(value: RawRole): OrgRole {
-  const normalized = String(value ?? '').toLowerCase()
+  const normalized = String(value ?? '').toLowerCase().trim()
 
+  // Handle exact matches for expected values
   if (normalized === 'owner') return 'owner'
   if (normalized === 'admin') return 'admin'
-  if (normalized === 'member') return 'member'
+  if (normalized === 'member' || normalized === 'qa_engineer' || normalized === 'qa_lead' || normalized === 'manager' || normalized === 'developer' || normalized === 'tester') {
+    // Map various backend roles to 'member'
+    return 'member'
+  }
+  // Everything else defaults to 'viewer'
   return 'viewer'
 }
 

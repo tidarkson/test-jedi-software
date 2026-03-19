@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { AppShell } from '@/components/layout/app-shell'
 import { Sidebar } from '@/components/layout/sidebar'
@@ -17,6 +18,7 @@ import { ErrorAlert } from '@/components/ui/error-alert'
 import { Check, FolderKanban, Plus } from 'lucide-react'
 
 export default function ProjectsPage() {
+  const router = useRouter()
   const projects = useProjectStore((state) => state.projects)
   const currentProjectId = useProjectStore((state) => state.currentProjectId)
   const isLoading = useProjectStore((state) => state.isLoading)
@@ -57,7 +59,11 @@ export default function ProjectsPage() {
       })
       setName('')
       setDescription('')
-      toast.success('Project created and selected')
+      toast.success('Project created successfully')
+      // Redirect to test repository after project creation
+      setTimeout(() => {
+        router.push('/test-repository')
+      }, 500)
     } catch {
       // Handled by store error + display
     } finally {
@@ -155,6 +161,30 @@ export default function ProjectsPage() {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
+                      <div className="mb-4 space-y-2">
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <p className="text-muted-foreground">Members</p>
+                            <p className="font-semibold">{project.memberCount ?? 0}</p>
+                          </div>
+                          <div>
+                            <p className="text-muted-foreground">Test Cases</p>
+                            <p className="font-semibold">{project.testCaseCount ?? 0}</p>
+                          </div>
+                        </div>
+                        {project.activeRunsCount ? (
+                          <div>
+                            <Badge variant="secondary" className="text-[10px]">
+                              {project.activeRunsCount} active run{project.activeRunsCount !== 1 ? 's' : ''}
+                            </Badge>
+                          </div>
+                        ) : null}
+                        {project.lastRunDate && (
+                          <p className="text-xs text-muted-foreground">
+                            Last run: {new Date(project.lastRunDate).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
                       <Button
                         variant={isCurrent ? 'secondary' : 'outline'}
                         onClick={() => setCurrentProject(project.id)}
